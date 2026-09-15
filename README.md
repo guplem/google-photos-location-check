@@ -4,8 +4,6 @@ A Chrome extension that shows you, straight on the Google Photos album grid, whi
 
 Every thumbnail whose photo has no place attached gets a small orange badge with a crossed-out map pin in its top left corner. Nothing else changes. The extension only reads: it never opens a photo, never clicks anything, and never edits your library.
 
-![No screenshot yet](#)
-
 ## Why you might want it
 
 Google Photos only tells you whether a photo has a location when you open that photo and look at its info panel. Finding the ones that are missing a location means opening them one at a time. In a 1611-photo holiday album, that is not something anyone does.
