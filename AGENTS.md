@@ -87,11 +87,15 @@ The JavaScript and the stylesheets do not call each other. `publishSettings` wri
 4. Each batch goes through `photosRpcClient.js` to the `fDcn4b` call, and `mediaLocationReading.js` turns each answer into `has-location`, `no-location`, or "cannot tell".
 5. The verdicts go to `locationStateStore.js`, and the renderer redraws.
 
+The **Read whole album** button changes none of that. `albumGridSweep.js` only scrolls the grid from top to bottom, which makes every thumbnail appear once, and steps 1 to 5 then happen by themselves. The sweep looks up nothing itself.
+
 ### File map
 
 | File                                         | Holds                                                                       |
 | -------------------------------------------- | --------------------------------------------------------------------------- |
 | `src/contentEntry.js`                        | Wiring only. Settings, routing, the debounce, storage writes.               |
+| `src/albumGrid/albumGridSweep.js`            | The top-to-bottom walk of the grid. Pure logic, no DOM.                     |
+| `src/albumGrid/albumGridScroller.js`         | **The only file that moves the grid.** Finds the real scroll container.     |
 | `src/googlePhotosPage.js`                    | URL parsing and the grid link selector. **All URL knowledge lives here.**   |
 | `src/diagnosticsReport.js`                   | Builds the report the panel copies. Pure logic, no DOM and no `chrome.*`.   |
 | `src/photosRpc/pageTokens.js`                | Reads the three request tokens out of the page's inline script text.        |
@@ -112,7 +116,9 @@ The JavaScript and the stylesheets do not call each other. `publishSettings` wri
 - **Retry the request, never the verdict.** A network failure, a non-2xx answer, a timeout, and an answer that did not arrive are all worth another go, and `albumLocationScan.js` backs off before each one. `has-location` and `no-location` are facts about the photo, and the next attempt returns the same fact.
 - **Never store `unknown`.** `locationStateStore.js` writes verdicts only. Storing `unknown` would tell the next visit the photo is already answered, and it would never be read again.
 - **Never match a Google class name.** Google Photos ships obfuscated class names (`QxNbxb`, `p137Zd`) that change with every release. Match the URL, a link target (`a[href*="/photo/"]`), or an accessible name. See `adr/0004-semantic-dom-matching.md`.
-- **Never act on the page.** No clicks, no key presses, no opening a photo. If a feature seems to need one, update `adr/0004-semantic-dom-matching.md` first, and take the sibling extensions' rule with it: a click target must match a known word, or the work stops.
+- **A sweep may only move the grid, and must put it back.** `albumGridSweep.js` scrolls and nothing else. It starts at the top, because the user may press the button half way down an album, and it returns the grid to where it found it in a `finally`, so a stop or a failure restores it too. Nothing covers the grid afterwards, so a user left at the bottom of a 1611-photo album has lost their place.
+- **Only `reachedBottom` licenses an album total.** A sweep that ran out of steps, was stopped, or met a grid that refused to move did not see the album. Showing its count as a total turns "we stopped looking" into "there is nothing left".
+- **Never act on the page.** Beyond the sweep's scrolling: no clicks, no key presses, no opening a photo. If a feature seems to need one, update `adr/0004-semantic-dom-matching.md` first, and take the sibling extensions' rule with it: a click target must match a known word, or the work stops.
 - **Keep DOM and `fetch` out of the logic.** `albumLocationScan.js` receives every action as a function, which is why its whole loop is unit tested with no browser and no network. Put each fragile call in a small adapter, keep the decision in a pure function, and test the pure function.
 - **Validate everything that comes out of storage.** `normalizeSettings` and `normalizeAlbumRecord` drop unknown keys and repair wrong values, because storage can hold data written by an older version. Extend those functions when you add a field, and add a test.
 - **Use the two storage areas as `adr/0006-extension-storage-layout.md` sets them.** Settings go in `chrome.storage.sync`; album answers go in `chrome.storage.local`, one key per album. Never put album answers in `sync`: a large album exceeds the per-item quota.
@@ -126,6 +132,10 @@ The JavaScript and the stylesheets do not call each other. `publishSettings` wri
 - **A place name above a run of thumbnails is not photo data.** Google Photos shows the album's own location there, which the owner set by hand. It says nothing about the photos under it, and it misled the first reading of the page during research.
 - **The album payload in the page holds no location.** `AF_initDataCallback` under `ds:7` carries the first 300 items with their ids, file names, sizes and video durations. There is no location field in it. Do not go looking again.
 - **The page ships only the first 300 media ids.** The rest exist only once the virtualised grid has rendered them. That is why the extension reads photos as their thumbnails appear; see `adr/0007-lazy-lookups-driven-by-scrolling.md`. The RPC that pages the album list was not found: `snAcKc`, `EzkLze` and `nMFwOc` were each tried and none accepted the payload.
+- **`window.scrollTo` does not scroll the album grid.** Google Photos scrolls an inner container. `findScrollingAncestor` walks up from a grid link to the first ancestor whose `scrollHeight` exceeds its `clientHeight` and whose `overflow-y` is `auto` or `scroll`. This helper is copied from both sibling extensions, where it is proven against the live site.
+- **A scroll that moves nothing means one of two opposite things.** At the end of the grid it is the end, and on some albums it is the only signal, because the content height they report is never quite reached. Anywhere else it means the scroller was not found or the page is busy. `sweepAlbumGrid` tells them apart by asking whether the position is at the bottom, and only gives up after `MAX_STALLED_STEPS` when it is not.
+- **Step less than a whole screen.** `STEP_FRACTION_OF_VIEWPORT` is `0.8`. A full-screen step can skip a row when the grid redraws late, and a skipped row is a photo that never gets a badge.
+- **Scroll with `behavior: 'instant'`.** A smooth scroll is still animating when the settle time is up, so the read happens mid-flight and misses rows.
 - **The grid is virtualised.** Google Photos keeps about fifty thumbnails in the page and reuses the same `<a>` elements as you scroll. One pass of decoration is never enough: `locationBadgeRenderer` watches for changes and stamps each link with `data-gplc-state` so a redraw is cheap. Document order is also not album order.
 - **A photo nobody has read yet gets no badge.** It is stamped `pending` and left plain. A badge that appears and then vanishes reads as a wrong answer.
 - **Every `chrome.*` call in the content script throws once the extension is reloaded.** "Extension context invalidated". A page left open keeps the old content script running with a dead `chrome.*`. So `readExtensionVersion` catches, `writeResults` falls back to keeping verdicts in memory, and `diagnosticsReport.js` takes the version as an argument rather than reading it. Keep `chrome.*` out of the paths that only report.
@@ -142,8 +152,8 @@ Develop new behavior **test-first, red-green**: write a failing test that pins t
 
 What is testable here, and what is not:
 
-- **Testable, and always test-first:** the answer-to-verdict decision (`mediaLocationReading.js`), the request and response shapes (`batchExecuteMessage.js`), the token read (`pageTokens.js`), the scan loop with its retries (`albumLocationScan.js`), the queue (`locationLookupQueue.js`), URL parsing (`googlePhotosPage.js`), settings validation (`extensionSettings.js`), the storage record shape (`locationStateStore.js`), and the report (`diagnosticsReport.js`).
-- **Exempt, because a unit test would only re-state the code:** `photosRpcClient.js`, `locationBadgeRenderer.js`, `controlPanelController.js`, and `optionsPage.js`. Keep these thin: an adapter reads an element, sends a request, or writes an attribute, and it holds no decision.
+- **Testable, and always test-first:** the answer-to-verdict decision (`mediaLocationReading.js`), the request and response shapes (`batchExecuteMessage.js`), the token read (`pageTokens.js`), the scan loop with its retries (`albumLocationScan.js`), the queue (`locationLookupQueue.js`), the grid sweep (`albumGridSweep.js`), URL parsing (`googlePhotosPage.js`), settings validation (`extensionSettings.js`), the storage record shape (`locationStateStore.js`), and the report (`diagnosticsReport.js`).
+- **Exempt, because a unit test would only re-state the code:** `photosRpcClient.js`, `albumGridScroller.js`, `locationBadgeRenderer.js`, `controlPanelController.js`, and `optionsPage.js`. Keep these thin: an adapter reads an element, sends a request, or writes an attribute, and it holds no decision.
 - **The safety net for the exempt parts** is the type check (`npm run typecheck` reads every file) plus one manual run in Chrome. `adr/0005-testing-strategy.md` records this split.
 
 The scan loop takes every action as an argument, so a test drives it with a fake reader and a `wait` that only records the number. The real backoff waits six seconds; the suite finishes in milliseconds.
@@ -202,7 +212,7 @@ ADRs live in `adr/`. Each records one architectural decision or cross-cutting st
 | `0004-semantic-dom-matching.md`              | Match URLs, link targets, accessible names; never classes; never act on the page    |
 | `0005-testing-strategy.md`                   | Pure logic is test-first; thin adapters are exempt and covered by types             |
 | `0006-extension-storage-layout.md`           | Settings in `sync`, album answers in `local`, one key per album                     |
-| `0007-lazy-lookups-driven-by-scrolling.md`   | A photo is read when its thumbnail appears; nothing scans ahead                     |
+| `0007-lazy-lookups-driven-by-scrolling.md`   | A photo is read when its thumbnail appears; a sweep of the whole album is opt-in    |
 
 ## GitHub issues, PRs, and other artifacts
 

@@ -30,6 +30,16 @@ Open an album and scroll. That is all.
 - A small panel in the bottom left corner counts what has been read so far in this album.
 - Answers are remembered on this computer, so an album you have already looked at shows its badges immediately.
 
+### Reading a whole album at once
+
+Scrolling only tells you about the photos you have actually looked at. To get the total for a whole album, press **Read whole album** in the panel.
+
+It scrolls the album from top to bottom for you, badging everything on the way, and then puts the grid back exactly where you had it. While it runs the button becomes **Stop reading**, and leaving the album stops it too.
+
+How long it takes depends on the album, not on your connection: most of the wait is the Google Photos grid drawing each screen of thumbnails. A 1611-photo album takes a few minutes. You can keep using the panel while it runs.
+
+Once it finishes, the panel shows a real total, for example `158 without location · 1611 of 1611 read`. If it was stopped, or could not reach the end, the total is left out on purpose: the extension will not present "we stopped looking" as "there is nothing left".
+
 **What the badges mean:**
 
 | Badge              | Means                                                                             |
@@ -65,6 +75,9 @@ Google changed the shape of its answer and the extension cannot read it any more
 
 **The panel says "could not be read" for a handful of photos.**
 Usually Google refused a burst of requests. Scroll past them and back, and they are asked about again. If it keeps happening, lower **Photos asked about in one request** and **Requests at the same time** in the options.
+
+**Read whole album stops before the end.**
+Press it again and it carries on from the top, keeping everything it already read. If it stops in the same place every time, the grid is not scrolling the way the extension expects; press **Copy diagnostics** and open an issue.
 
 **A badge disagrees with what Google Photos shows.**
 Open the photo and press `i`. If the info panel shows a place and the badge says there is none, press **Read this album again** in the panel and scroll past that photo. If it still disagrees, that is a bug worth reporting.
