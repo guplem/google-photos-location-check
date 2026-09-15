@@ -1,0 +1,62 @@
+/* The small panel in the corner of an album page.
+
+   It sits above the Google Photos interface but below its dialogs, and it never
+   covers the bottom-right corner, where Google Photos puts its own controls. */
+
+#gplc-panel {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  min-width: 210px;
+  max-width: 300px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #f1f3f4;
+  background: rgb(32 33 36 / 94%);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 45%);
+  font-family: 'Google Sans', Roboto, Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+#gplc-panel p {
+  margin: 0;
+}
+
+.gplc-panel-count {
+  font-weight: 500;
+}
+
+.gplc-panel-status {
+  min-height: 1.4em;
+  color: #bdc1c6;
+}
+
+.gplc-panel-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.gplc-panel-button {
+  padding: 4px 8px;
+  border: 1px solid rgb(241 243 244 / 30%);
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.gplc-panel-button:hover {
+  background: rgb(241 243 244 / 12%);
+}
+
+.gplc-panel-button:focus-visible {
+  outline: 2px solid #8ab4f8;
+  outline-offset: 1px;
+}

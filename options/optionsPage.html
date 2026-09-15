@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Google Photos Location Check</title>
+    <link rel="stylesheet" href="optionsPage.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Google Photos Location Check</h1>
+
+      <section>
+        <h2>Badges</h2>
+        <p class="hint">
+          Open any Google Photos album. Each thumbnail whose photo carries no location gets a crossed-out map pin in its top left
+          corner. Photos are read as their thumbnails come into view, so badges fill in while you scroll.
+        </p>
+
+        <label class="row">
+          <input type="checkbox" id="locationBadgesEnabled" />
+          <span>Show a badge on photos with no location</span>
+        </label>
+
+        <label class="row">
+          <input type="checkbox" id="dimPhotosWithLocation" />
+          <span>Fade the photos that do have a location, so the rest stand out</span>
+        </label>
+
+        <label class="row">
+          <input type="checkbox" id="markUnreadablePhotos" />
+          <span>Also mark, in grey, the photos that could not be read</span>
+        </label>
+        <p class="hint">
+          Grey is not the same answer as orange. Orange means Google told us the photo has no location. Grey means we could not
+          get an answer, which usually means Google changed something and the extension needs an update.
+        </p>
+      </section>
+
+      <section>
+        <h2>Speed</h2>
+        <p class="hint">
+          Leave these alone unless something misbehaves. Lower them if Google starts refusing requests; the panel on the album
+          page reports that under <strong>Copy diagnostics</strong>.
+        </p>
+
+        <label class="row">
+          <span class="label">Photos asked about in one request</span>
+          <input type="number" id="lookupBatchSize" min="1" max="200" step="10" />
+        </label>
+
+        <label class="row">
+          <span class="label">Requests at the same time</span>
+          <input type="number" id="lookupParallelRequests" min="1" max="6" step="1" />
+        </label>
+
+        <label class="row">
+          <span class="label">Wait after scrolling before asking (ms)</span>
+          <input type="number" id="lookupDebounceMs" min="0" max="5000" step="50" />
+        </label>
+      </section>
+
+      <section>
+        <h2>Remembered albums</h2>
+        <p class="hint">
+          Each answer is remembered on this computer, so an album you have already looked at shows its badges at once. Forget them
+          if a photo's location changed and the badge did not.
+        </p>
+        <button type="button" id="clearAlbums">Forget every remembered album</button>
+      </section>
+
+      <div class="actions">
+        <button type="button" id="save">Save</button>
+        <button type="button" id="reset">Reset to defaults</button>
+        <span id="status" role="status"></span>
+      </div>
+    </main>
+
+    <script type="module" src="optionsPage.js"></script>
+  </body>
+</html>
