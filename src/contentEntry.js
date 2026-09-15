@@ -11,9 +11,15 @@
  *    about what is left, in batches, through `albumLocationScan`.
  * 4. The verdicts are remembered per album, and the renderer redraws.
  *
- * Nothing scans ahead. A photo is read when its thumbnail comes into the page,
- * which is why opening an album costs nothing and why badges appear as you
- * scroll.
+ * Nothing scans ahead on its own. A photo is read when its thumbnail comes into
+ * the page, which is why opening an album costs nothing and why badges appear
+ * as you scroll.
+ *
+ * The **Read whole album** button is the one exception, and it changes nothing
+ * about the flow above. It only scrolls the grid from top to bottom, which
+ * makes every thumbnail appear once, and steps 1 to 4 then happen by
+ * themselves. The button is off the critical path: the extension works without
+ * anyone pressing it.
  *
  * ## A photo key is a media id
  *
@@ -22,6 +28,8 @@
  * that lets this extension work off the grid alone.
  */
 
+import { createAlbumGridScroller } from './albumGrid/albumGridScroller.js';
+import { sweepAlbumGrid } from './albumGrid/albumGridSweep.js';
 import { createControlPanel } from './controlPanel/controlPanelController.js';
 import { buildDiagnosticsReport } from './diagnosticsReport.js';
 import { isAlbumContext, readGooglePhotosLocation } from './googlePhotosPage.js';
@@ -70,6 +78,7 @@ export async function start() {
   await waitForBody();
 
   const store = createLocationStateStore(chrome.storage.local);
+  const gridScroller = createAlbumGridScroller(window);
   const rpcClient = createPhotosRpcClient({
     document,
     fetch: window.fetch.bind(window),
@@ -91,6 +100,16 @@ export async function start() {
 
   /** @type {number | null} */
   let debounceTimer = null;
+
+  let sweepRunning = false;
+  let stopSweepRequested = false;
+
+  /** How many photos the album holds. Known only after a sweep reached the bottom. */
+  /** @type {number | null} */
+  let albumPhotoCount = null;
+
+  /** @param {number} milliseconds */
+  const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
   /**
    * @param {string} photoKey
@@ -116,6 +135,7 @@ export async function start() {
       withoutLocation: summary.withoutLocation,
       pending: queue.pendingCount(),
       unreadable: unreadablePhotos.size,
+      albumTotal: albumPhotoCount,
     });
   }
 
@@ -157,7 +177,7 @@ export async function start() {
       scanAlbumLocations({
         mediaIds,
         readChunk: (chunk) => rpcClient.readLocations(chunk),
-        wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+        wait: sleep,
         chunkSize: settings.lookupBatchSize,
         parallelRequests: settings.lookupParallelRequests,
       }),
@@ -189,8 +209,66 @@ export async function start() {
     shouldMarkUnreadable: () => settings.markUnreadablePhotos,
   });
 
+  /**
+   * Scrolls the album from top to bottom so every thumbnail appears once.
+   *
+   * The sweep looks up nothing itself. Its readPhotoKeysOnScreen is wrapped
+   * here so that each screen of thumbnails it uncovers goes straight into the
+   * queue, which is what makes the badges fill in while the grid moves. The
+   * drain is not debounced during a sweep: the sweep's own settle time already
+   * paces it, and waiting again would leave the last screens unread.
+   * @returns {Promise<void>}
+   */
+  async function readWholeAlbum() {
+    if (sweepRunning || albumKey === null) return;
+    sweepRunning = true;
+    stopSweepRequested = false;
+    panel.setBusy(true);
+    panel.setStatus('Reading the whole album...');
+
+    const albumAtStart = albumKey;
+    try {
+      const sweep = await sweepAlbumGrid({
+        readPhotoKeysOnScreen: () => {
+          const photoKeys = gridScroller.readPhotoKeysOnScreen();
+          if (queue.enqueue(photoKeys) > 0) void queue.drain();
+          return photoKeys;
+        },
+        readScrollPosition: () => gridScroller.readScrollPosition(),
+        scrollTo: (top) => gridScroller.scrollTo(top),
+        wait: sleep,
+        // Leaving the album mid-sweep must stop it, or it scrolls a grid that
+        // is no longer the one the user is looking at.
+        shouldStop: () => stopSweepRequested || albumKey !== albumAtStart,
+        onProgress: () => updatePanel(),
+      });
+
+      panel.setStatus('Looking up the last photos...');
+      await queue.drain();
+
+      // Only a sweep that reached the bottom knows how many photos the album
+      // holds. Any other ending means "we stopped looking", which is not the
+      // same thing and must never be shown as a total.
+      albumPhotoCount = sweep.reachedBottom ? sweep.photoKeys.length : null;
+      const photosRead = String(sweep.photoKeys.length);
+      if (sweep.reachedBottom) panel.setStatus('Read the whole album: ' + photosRead + ' photos.');
+      else if (sweep.stoppedEarly) panel.setStatus('Stopped after ' + photosRead + ' photos.');
+      else panel.setStatus('Stopped before the end, after ' + photosRead + ' photos. Press again to carry on.');
+    } finally {
+      sweepRunning = false;
+      stopSweepRequested = false;
+      panel.setBusy(false);
+      updatePanel();
+    }
+  }
+
   const panel = createControlPanel({
     document,
+
+    onReadWholeAlbum: readWholeAlbum,
+    onStopReading: () => {
+      stopSweepRequested = true;
+    },
 
     buildReport: async () => {
       const summary = summarizeAlbumRecord(albumRecord);
@@ -203,6 +281,7 @@ export async function start() {
         photosWithoutLocation: summary.withoutLocation,
         photosPending: queue.pendingCount(),
         photosUnreadable: unreadablePhotos.size,
+        photosInAlbum: albumPhotoCount,
         recentFailures,
         settings,
       });
@@ -241,6 +320,7 @@ export async function start() {
 
     if (page.albumKey !== albumKey) {
       albumKey = page.albumKey;
+      albumPhotoCount = null;
       unreadablePhotos.clear();
       albumRecord = createEmptyAlbumRecord(albumKey);
       try {

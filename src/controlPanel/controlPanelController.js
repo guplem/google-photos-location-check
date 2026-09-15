@@ -3,8 +3,9 @@
  *
  * It answers one question at a glance: how many photos of this album have no
  * location. Badges mark them one by one; this is the total. It also carries the
- * two buttons a user needs when something looks wrong: copy the diagnostics,
- * and forget what is remembered about this album so it is read again.
+ * button that reads the whole album at once, and the two buttons a user needs
+ * when something looks wrong: copy the diagnostics, and forget what is
+ * remembered about this album so it is read again.
  *
  * ## Why every button catches everything
  *
@@ -27,9 +28,12 @@ const COPY_TIMEOUT_MS = 2000;
  * @property {number} withoutLocation
  * @property {number} pending
  * @property {number} unreadable
+ * @property {number | null} albumTotal  How many photos the album holds, once a sweep reached its end.
  *
  * @typedef {object} ControlPanelDeps
  * @property {Document} document
+ * @property {() => Promise<void>} onReadWholeAlbum
+ * @property {() => void} onStopReading
  * @property {() => Promise<string>} buildReport
  * @property {() => Promise<void>} onRecheckAlbum
  * @property {() => void} onOpenOptions
@@ -85,6 +89,10 @@ export function createControlPanel(deps) {
   let countLine = null;
   /** @type {HTMLElement | null} */
   let statusLine = null;
+  /** @type {HTMLButtonElement | null} */
+  let sweepButton = null;
+
+  let busy = false;
 
   /**
    * @param {string} label
@@ -116,9 +124,26 @@ export function createControlPanel(deps) {
     statusLine = ownerDocument.createElement('p');
     statusLine.className = 'gplc-panel-status';
 
+    sweepButton = createButton('Read whole album', () => {
+      if (busy) {
+        deps.onStopReading();
+        setStatus('Stopping...');
+        return;
+      }
+      void (async () => {
+        try {
+          await deps.onReadWholeAlbum();
+        } catch (error) {
+          console.error('[Location Check] could not read the whole album', error);
+          setStatus('Could not read the album. See the console.');
+        }
+      })();
+    });
+
     const buttons = ownerDocument.createElement('div');
     buttons.className = 'gplc-panel-buttons';
     buttons.append(
+      sweepButton,
       createButton('Copy diagnostics', () => {
         void (async () => {
           setStatus('Building the report...');
@@ -168,13 +193,30 @@ export function createControlPanel(deps) {
       panel = null;
       countLine = null;
       statusLine = null;
+      sweepButton = null;
+      busy = false;
+    },
+
+    /**
+     * Turns the sweep button into a Stop button while a sweep runs.
+     * @param {boolean} running
+     */
+    setBusy(running) {
+      busy = running;
+      if (sweepButton !== null) sweepButton.textContent = running ? 'Stop reading' : 'Read whole album';
     },
 
     /** @param {ControlPanelCounts} counts */
     setCounts(counts) {
       if (countLine === null) return;
       const parts = [String(counts.withoutLocation) + ' without location'];
-      parts.push(String(counts.known) + ' read');
+      // "12 read" and "12 of 1611 read" say different things. The second is
+      // only honest once a sweep reached the end of the album.
+      parts.push(
+        counts.albumTotal === null
+          ? String(counts.known) + ' read'
+          : String(counts.known) + ' of ' + String(counts.albumTotal) + ' read',
+      );
       if (counts.pending > 0) parts.push(String(counts.pending) + ' to go');
       if (counts.unreadable > 0) parts.push(String(counts.unreadable) + ' unreadable');
       countLine.textContent = parts.join(' \u00b7 ');
