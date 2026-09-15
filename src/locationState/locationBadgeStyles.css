@@ -1,0 +1,37 @@
+/* Badge drawn on top of every album thumbnail whose photo carries no location. */
+
+.gplc-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 50%;
+  color: #2a1200;
+  background: #ff8f00;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+.gplc-badge svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* A photo the extension could not read is not a photo without a location.
+   It gets the same shape in a colour that does not claim an answer. */
+a[data-gplc-state='unknown'] > .gplc-badge {
+  color: #f1f1f1;
+  background: #5f6368;
+}
+
+/* Optional: fade the photos that do have a location, so the rest stand out. */
+html[data-gplc-dim-located='on'] a[data-gplc-state='has-location'] {
+  opacity: 0.4;
+}
