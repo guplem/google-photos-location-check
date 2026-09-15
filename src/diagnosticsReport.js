@@ -24,6 +24,7 @@
  * @property {number} photosWithoutLocation
  * @property {number} photosPending
  * @property {number} photosUnreadable
+ * @property {number | null} photosInAlbum  Known only after a sweep reached the end of the album.
  * @property {readonly string[]} recentFailures
  * @property {ExtensionSettings} settings
  */
@@ -52,6 +53,7 @@ export function buildDiagnosticsReport(input) {
       'album: ' + (input.albumKey ?? '(not an album page)'),
     ]),
     ...section('Photos seen in this album', [
+      'photos in the album: ' + (input.photosInAlbum === null ? '(not read to the end yet)' : String(input.photosInAlbum)),
       'read so far: ' + String(input.photosKnown),
       'with a location: ' + String(input.photosWithLocation),
       'without a location: ' + String(input.photosWithoutLocation),

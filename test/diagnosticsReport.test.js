@@ -15,6 +15,7 @@ function buildInput(overrides = {}) {
     photosWithoutLocation: 158,
     photosPending: 0,
     photosUnreadable: 0,
+    photosInAlbum: null,
     recentFailures: [],
     settings: DEFAULT_SETTINGS,
     ...overrides,
@@ -27,6 +28,11 @@ test('reports the counts and the page it was taken on', () => {
   assert.match(report, /album: album-1/);
   assert.match(report, /without a location: 158/);
   assert.match(report, /extension version: 0\.1\.0/);
+});
+
+test('says the album size is not known until a sweep reached the end', () => {
+  assert.match(buildDiagnosticsReport(buildInput()), /photos in the album: \(not read to the end yet\)/);
+  assert.match(buildDiagnosticsReport(buildInput({ photosInAlbum: 1611 })), /photos in the album: 1611/);
 });
 
 test('says the album is missing rather than printing nothing', () => {
