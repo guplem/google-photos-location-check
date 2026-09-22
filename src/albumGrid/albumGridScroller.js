@@ -7,10 +7,14 @@
  * extensions, where it is proven against the live site.
  *
  * This is a thin DOM adapter and holds no decision, so it has no unit test. The
- * walk that uses it, `albumGridSweep.js`, is pure and fully tested.
+ * walks that use it, `albumGridSweep.js` and `albumGridJump.js`, are pure and
+ * fully tested.
  */
 
 import { findGridPhotoLinks, GRID_PHOTO_LINK_SELECTOR, readPhotoKeyFromLink } from '../googlePhotosPage.js';
+
+/** How much of the grid is left around a thumbnail brought into view. */
+const BRING_INTO_VIEW_MARGIN_FRACTION = 0.35;
 
 /** Rows whose tops differ by less than this count as the same row. */
 const SAME_ROW_TOLERANCE_PX = 4;
@@ -91,6 +95,35 @@ export function createAlbumGridScroller(view) {
       // `behavior: 'instant'` on purpose. A smooth scroll is still animating
       // when the settle time is up, so the read would happen mid-flight.
       findScroller()?.scrollTo({ top, behavior: 'instant' });
+    },
+
+    /**
+     * Moves the grid so one photo sits in clear view, near the top but not
+     * against it.
+     *
+     * `Element.scrollIntoView` is not used: it scrolls every scrollable
+     * ancestor, and Google Photos has several, so the grid ends up somewhere
+     * nobody asked for. The offset is worked out against the scrolling element
+     * this file already finds, and nothing else moves.
+     *
+     * The thumbnail is left a third of a screen below the top edge, because
+     * Google Photos draws its own header over the first rows of the grid.
+     * @param {string} photoKey
+     * @returns {boolean} False when that photo is not in the page.
+     */
+    scrollPhotoIntoView(photoKey) {
+      const link = findGridPhotoLinks(view.document).find((candidate) => readPhotoKeyFromLink(candidate) === photoKey);
+      if (link === undefined) return false;
+
+      const scroller = findScrollingAncestor(view, link);
+      if (scroller === null) return false;
+
+      const linkBox = link.getBoundingClientRect();
+      const scrollerBox = scroller.getBoundingClientRect();
+      const offsetInsideScroller = scroller.scrollTop + (linkBox.top - scrollerBox.top);
+      const margin = scroller.clientHeight * BRING_INTO_VIEW_MARGIN_FRACTION;
+      scroller.scrollTo({ top: Math.max(0, offsetInsideScroller - margin), behavior: 'instant' });
+      return true;
     },
   };
 }

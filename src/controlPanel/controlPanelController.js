@@ -3,7 +3,8 @@
  *
  * It answers one question at a glance: how many photos of this album have no
  * location. Badges mark them one by one; this is the total. It also carries the
- * button that reads the whole album at once, and the two buttons a user needs
+ * button that reads the whole album at once, the pair that walks the grid from
+ * one photo without a location to the next, and the two buttons a user needs
  * when something looks wrong: copy the diagnostics, and forget what is
  * remembered about this album so it is read again.
  *
@@ -34,6 +35,7 @@ const COPY_TIMEOUT_MS = 2000;
  * @property {Document} document
  * @property {() => Promise<void>} onReadWholeAlbum
  * @property {() => void} onStopReading
+ * @property {(direction: 'next' | 'previous') => Promise<void>} onJumpToPhotoWithoutLocation
  * @property {() => Promise<string>} buildReport
  * @property {() => Promise<void>} onRecheckAlbum
  * @property {() => void} onOpenOptions
@@ -91,6 +93,8 @@ export function createControlPanel(deps) {
   let statusLine = null;
   /** @type {HTMLButtonElement | null} */
   let sweepButton = null;
+  /** @type {HTMLButtonElement[]} */
+  let jumpButtons = [];
 
   let busy = false;
 
@@ -140,10 +144,26 @@ export function createControlPanel(deps) {
       })();
     });
 
+    // One handler for both directions: they differ only in which way they walk.
+    /** @param {'next' | 'previous'} direction */
+    const createJumpButton = (direction) =>
+      createButton(direction === 'next' ? 'Next without location' : 'Previous without location', () => {
+        void (async () => {
+          try {
+            await deps.onJumpToPhotoWithoutLocation(direction);
+          } catch (error) {
+            console.error('[Location Check] could not jump to a photo without a location', error);
+            setStatus('Could not look for that photo. See the console.');
+          }
+        })();
+      });
+    jumpButtons = [createJumpButton('previous'), createJumpButton('next')];
+
     const buttons = ownerDocument.createElement('div');
     buttons.className = 'gplc-panel-buttons';
     buttons.append(
       sweepButton,
+      ...jumpButtons,
       createButton('Copy diagnostics', () => {
         void (async () => {
           setStatus('Building the report...');
@@ -194,6 +214,7 @@ export function createControlPanel(deps) {
       countLine = null;
       statusLine = null;
       sweepButton = null;
+      jumpButtons = [];
       busy = false;
     },
 
@@ -204,6 +225,17 @@ export function createControlPanel(deps) {
     setBusy(running) {
       busy = running;
       if (sweepButton !== null) sweepButton.textContent = running ? 'Stop reading' : 'Read whole album';
+      for (const button of jumpButtons) button.disabled = running;
+    },
+
+    /**
+     * A jump walks the grid, so a second one pressed on top of it would fight
+     * the first over where the page sits. Both buttons wait instead.
+     * @param {boolean} running
+     */
+    setJumping(running) {
+      for (const button of jumpButtons) button.disabled = running;
+      if (sweepButton !== null) sweepButton.disabled = running;
     },
 
     /** @param {ControlPanelCounts} counts */

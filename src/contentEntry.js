@@ -21,6 +21,11 @@
  * themselves. The button is off the critical path: the extension works without
  * anyone pressing it.
  *
+ * The **next / previous without location** buttons scroll the same way, but
+ * they cannot be off the critical path: each screen they uncover has to be
+ * looked up before they can tell whether the photo they are after is on it. So
+ * `showPhotoWithoutLocation` below is the one place that waits for the queue.
+ *
  * ## A photo key is a media id
  *
  * The grid link points at `.../photo/AF1Qip...`, and that same string is what
@@ -28,6 +33,7 @@
  * that lets this extension work off the grid alone.
  */
 
+import { jumpToPhotoWithoutLocation } from './albumGrid/albumGridJump.js';
 import { createAlbumGridScroller } from './albumGrid/albumGridScroller.js';
 import { sweepAlbumGrid } from './albumGrid/albumGridSweep.js';
 import { createControlPanel } from './controlPanel/controlPanelController.js';
@@ -103,6 +109,11 @@ export async function start() {
 
   let sweepRunning = false;
   let stopSweepRequested = false;
+
+  let jumpRunning = false;
+  /** The photo the last jump landed on, so pressing the button again moves on. */
+  /** @type {string | null} */
+  let lastJumpPhotoKey = null;
 
   /** How many photos the album holds. Known only after a sweep reached the bottom. */
   /** @type {number | null} */
@@ -220,7 +231,7 @@ export async function start() {
    * @returns {Promise<void>}
    */
   async function readWholeAlbum() {
-    if (sweepRunning || albumKey === null) return;
+    if (sweepRunning || jumpRunning || albumKey === null) return;
     sweepRunning = true;
     stopSweepRequested = false;
     panel.setBusy(true);
@@ -262,10 +273,86 @@ export async function start() {
     }
   }
 
+  /**
+   * Walks the grid to the next, or previous, photo that carries no location and
+   * leaves the user looking at it.
+   *
+   * The walk decides where to stop; everything here is the page side of it:
+   * uncovered photos go into the lookup queue and are waited for, the photo
+   * that was found is brought into view and marked, and the user is told what
+   * happened either way.
+   * @param {'next' | 'previous'} direction
+   * @returns {Promise<void>}
+   */
+  async function showPhotoWithoutLocation(direction) {
+    if (sweepRunning || jumpRunning || albumKey === null) return;
+
+    // The panel also shows while a photo is open, and there is no grid to walk
+    // behind it. Saying so is better than a walk that finds nothing.
+    if (gridScroller.readScrollPosition() === null) {
+      panel.setStatus('Go back to the album grid to use this.');
+      return;
+    }
+
+    jumpRunning = true;
+    panel.setJumping(true);
+    panel.setStatus(direction === 'next' ? 'Looking further down...' : 'Looking further up...');
+
+    const albumAtStart = albumKey;
+    try {
+      const jump = await jumpToPhotoWithoutLocation({
+        direction,
+        fromPhotoKey: lastJumpPhotoKey,
+        readPhotoKeysOnScreen: () => gridScroller.readPhotoKeysOnScreen(),
+        waitForVerdicts: async (photoKeys) => {
+          // Drained even when `enqueue` added nothing. Nothing added can also
+          // mean the scroll-driven drain is already asking about these photos,
+          // and judging the screen before that answer arrives would walk past
+          // the very photo the button is looking for.
+          queue.enqueue(photoKeys);
+          await queue.drain();
+          updatePanel();
+        },
+        readState: readStoredState,
+        readScrollPosition: () => gridScroller.readScrollPosition(),
+        scrollTo: (top) => gridScroller.scrollTo(top),
+        wait: sleep,
+        // Leaving the album mid-walk must stop it, or it scrolls a grid that is
+        // no longer the one the user is looking at.
+        shouldStop: () => albumKey !== albumAtStart,
+      });
+
+      if (jump.photoKey === null) {
+        // The anchor belonged to a walk that is over. Keeping it would make the
+        // next press start from a photo the user may be nowhere near.
+        lastJumpPhotoKey = null;
+        if (jump.stoppedEarly) panel.setStatus('Stopped looking.');
+        else if (jump.reachedEnd) {
+          panel.setStatus(
+            direction === 'next'
+              ? 'No more photos without a location below this one.'
+              : 'No more photos without a location above this one.',
+          );
+        } else panel.setStatus('Stopped before the end of the album. Press again to carry on.');
+        return;
+      }
+
+      lastJumpPhotoKey = jump.photoKey;
+      gridScroller.scrollPhotoIntoView(jump.photoKey);
+      renderer.highlightPhoto(jump.photoKey);
+      panel.setStatus(direction === 'next' ? 'Here is the next one.' : 'Here is the previous one.');
+    } finally {
+      jumpRunning = false;
+      panel.setJumping(false);
+      updatePanel();
+    }
+  }
+
   const panel = createControlPanel({
     document,
 
     onReadWholeAlbum: readWholeAlbum,
+    onJumpToPhotoWithoutLocation: showPhotoWithoutLocation,
     onStopReading: () => {
       stopSweepRequested = true;
     },
@@ -321,6 +408,7 @@ export async function start() {
     if (page.albumKey !== albumKey) {
       albumKey = page.albumKey;
       albumPhotoCount = null;
+      lastJumpPhotoKey = null;
       unreadablePhotos.clear();
       albumRecord = createEmptyAlbumRecord(albumKey);
       try {
