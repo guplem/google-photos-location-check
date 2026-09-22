@@ -81,12 +81,24 @@ test('writes nothing at all when a batch holds no verdict', async () => {
 test('returns an empty record for an album never looked at', async () => {
   const store = createLocationStateStore(fakeStorageArea());
 
-  assert.deepEqual(await store.readAlbum('never-seen'), { albumKey: 'never-seen', updatedAt: 0, photos: {} });
+  assert.deepEqual(await store.readAlbum('never-seen'), {
+    albumKey: 'never-seen',
+    updatedAt: 0,
+    photos: {},
+    order: [],
+    orderComplete: false,
+  });
 });
 
 test('repairs anything stored that is not a record we wrote', () => {
   for (const broken of [null, 7, 'text', [], { photos: 'not an object' }]) {
-    assert.deepEqual(normalizeAlbumRecord('album-1', broken), { albumKey: 'album-1', updatedAt: 0, photos: {} });
+    assert.deepEqual(normalizeAlbumRecord('album-1', broken), {
+      albumKey: 'album-1',
+      updatedAt: 0,
+      photos: {},
+      order: [],
+      orderComplete: false,
+    });
   }
 });
 
@@ -114,6 +126,8 @@ test('counts the two verdicts', () => {
       b: { state: 'has-location', checkedAt: 1 },
       c: { state: 'no-location', checkedAt: 1 },
     },
+    order: ['a', 'b', 'c'],
+    orderComplete: true,
   });
 
   assert.deepEqual(summary, { known: 3, withLocation: 1, withoutLocation: 2 });
@@ -139,4 +153,62 @@ test('clears every album but keeps anything that is not album data', async () =>
 
   assert.equal(await store.clearAllAlbums(), 2);
   assert.deepEqual(await storage.get(null), { settings: { badgeStyle: 'pin' } });
+});
+
+test('writes down the album order a sweep saw', async () => {
+  const storage = fakeStorageArea();
+  const store = createLocationStateStore(storage);
+
+  const record = await store.writeAlbumOrder('album-1', ['p1', 'p2', 'p3'], true);
+
+  assert.deepEqual(record.order, ['p1', 'p2', 'p3']);
+  assert.equal(record.orderComplete, true);
+  assert.deepEqual((await store.readAlbum('album-1')).order, ['p1', 'p2', 'p3']);
+});
+
+test('marks an order incomplete when the sweep did not reach the bottom', async () => {
+  const store = createLocationStateStore(fakeStorageArea());
+
+  const record = await store.writeAlbumOrder('album-1', ['p1', 'p2'], false);
+
+  assert.equal(record.orderComplete, false);
+});
+
+test('never replaces a good order with an empty one', async () => {
+  const store = createLocationStateStore(fakeStorageArea());
+  await store.writeAlbumOrder('album-1', ['p1', 'p2'], true);
+
+  await store.writeAlbumOrder('album-1', [], true);
+
+  const record = await store.readAlbum('album-1');
+  assert.deepEqual(record.order, ['p1', 'p2'], 'expected a sweep that saw nothing to take nothing away');
+  assert.equal(record.orderComplete, true);
+});
+
+test('keeps the order when new verdicts are merged in', async () => {
+  const store = createLocationStateStore(fakeStorageArea());
+  await store.writeAlbumOrder('album-1', ['p1', 'p2'], true);
+
+  await store.mergePhotoStates('album-1', new Map([['p1', 'no-location']]));
+
+  assert.deepEqual((await store.readAlbum('album-1')).order, ['p1', 'p2']);
+});
+
+test('an album written by an older version simply has no order', () => {
+  const record = normalizeAlbumRecord('album-1', { albumKey: 'album-1', updatedAt: 5, photos: {} });
+
+  assert.deepEqual(record.order, []);
+  assert.equal(record.orderComplete, false);
+});
+
+test('repairs an order that is not a list of photo ids', () => {
+  const record = normalizeAlbumRecord('album-1', { order: ['p1', 7, null, 'p2'], orderComplete: true, photos: {} });
+
+  assert.deepEqual(record.order, ['p1', 'p2']);
+});
+
+test('an empty order is never called complete', () => {
+  const record = normalizeAlbumRecord('album-1', { order: [], orderComplete: true, photos: {} });
+
+  assert.equal(record.orderComplete, false);
 });

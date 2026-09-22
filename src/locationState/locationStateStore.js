@@ -9,6 +9,14 @@
  * Only a verdict is ever stored. `unknown` means "we could not read it", and
  * writing that down would stop the extension asking again on the next visit.
  *
+ * The record also holds the album order, which is the list of photo ids as a
+ * sweep saw them. The photo viewer has no grid to walk, so it is the only way
+ * the extension can say "the next photo without a location is that one" while
+ * a photo is open. Only a sweep writes it: the lazy reads that happen while
+ * you scroll see photos in the order you happen to uncover them, which is not
+ * the album order. `orderComplete` is true only for a sweep that reached the
+ * bottom, so a half-read album never claims to know where the album ends.
+ *
  * Everything that comes back out of storage passes `normalizeAlbumRecord`,
  * because storage can still hold data written by an older version.
  */
@@ -26,6 +34,8 @@ export const LOCATION_STATE_KEY_PREFIX = 'locationState:v1:';
  * @property {string} albumKey
  * @property {number} updatedAt
  * @property {Record<string, PhotoLocationEntry>} photos
+ * @property {string[]} order          The photos of the album, in album order, as the last sweep saw them.
+ * @property {boolean} orderComplete   True only when that sweep reached the bottom.
  *
  * @typedef {object} AlbumLocationSummary
  * @property {number} known
@@ -46,7 +56,7 @@ export function albumStorageKey(albumKey) {
  * @returns {AlbumLocationRecord}
  */
 export function createEmptyAlbumRecord(albumKey) {
-  return { albumKey, updatedAt: 0, photos: {} };
+  return { albumKey, updatedAt: 0, photos: {}, order: [], orderComplete: false };
 }
 
 /**
@@ -72,10 +82,17 @@ export function normalizeAlbumRecord(albumKey, stored) {
     };
   }
 
+  // An order written by an older version does not exist, and a stored order
+  // could hold anything. Either way the album simply has no order yet, which
+  // every caller already handles.
+  const order = Array.isArray(raw.order) ? raw.order.filter((entry) => typeof entry === 'string') : [];
+
   return {
     albumKey,
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
     photos: clean,
+    order,
+    orderComplete: order.length > 0 && raw.orderComplete === true,
   };
 }
 
@@ -125,6 +142,28 @@ export function createLocationStateStore(storageArea) {
       if (!changed) return record;
 
       record.updatedAt = checkedAt;
+      await storageArea.set({ [albumStorageKey(albumKey)]: record });
+      return record;
+    },
+
+    /**
+     * Writes down the album order a sweep just saw.
+     *
+     * An empty order is never written. A sweep that saw nothing has not learned
+     * that the album is empty; it has learned nothing, and overwriting a good
+     * order with it would take away the only thing the photo viewer can use.
+     * @param {string} albumKey
+     * @param {readonly string[]} order
+     * @param {boolean} complete  True only when the sweep reached the bottom.
+     * @returns {Promise<AlbumLocationRecord>}
+     */
+    async writeAlbumOrder(albumKey, order, complete) {
+      const record = await this.readAlbum(albumKey);
+      if (order.length === 0) return record;
+
+      record.order = [...order];
+      record.orderComplete = complete;
+      record.updatedAt = Date.now();
       await storageArea.set({ [albumStorageKey(albumKey)]: record });
       return record;
     },
