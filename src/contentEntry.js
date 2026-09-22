@@ -26,6 +26,13 @@
  * looked up before they can tell whether the photo they are after is on it. So
  * `showPhotoWithoutLocation` below is the one place that waits for the queue.
  *
+ * Those two buttons do two different things, because the two pages of an album
+ * are different. On the grid they walk the thumbnails. In the photo viewer
+ * there is no grid to walk, so they read the album order a sweep wrote down and
+ * open the photo it names. That is the only place this extension moves the user
+ * off the page they were on, and it costs a page load, because the alternative
+ * is to drive the Google Photos controls, which this extension does not do.
+ *
  * ## A photo key is a media id
  *
  * The grid link points at `.../photo/AF1Qip...`, and that same string is what
@@ -38,10 +45,11 @@ import { createAlbumGridScroller } from './albumGrid/albumGridScroller.js';
 import { sweepAlbumGrid } from './albumGrid/albumGridSweep.js';
 import { createControlPanel } from './controlPanel/controlPanelController.js';
 import { buildDiagnosticsReport } from './diagnosticsReport.js';
-import { isAlbumContext, readGooglePhotosLocation } from './googlePhotosPage.js';
+import { isAlbumContext, readGooglePhotosLocation, replacePhotoKey } from './googlePhotosPage.js';
 import { scanAlbumLocations } from './locationState/albumLocationScan.js';
 import { createLocationBadgeRenderer } from './locationState/locationBadgeRenderer.js';
 import { createLocationLookupQueue } from './locationState/locationLookupQueue.js';
+import { findNextPhotoWithoutLocation } from './locationState/nextPhotoWithoutLocation.js';
 import { createEmptyAlbumRecord, createLocationStateStore, summarizeAlbumRecord } from './locationState/locationStateStore.js';
 import { createPhotosRpcClient } from './photosRpc/photosRpcClient.js';
 import { DEFAULT_SETTINGS, loadSettings } from './settings/extensionSettings.js';
@@ -232,6 +240,13 @@ export async function start() {
    */
   async function readWholeAlbum() {
     if (sweepRunning || jumpRunning || albumKey === null) return;
+
+    // The panel also shows while a photo is open, and there is no grid behind
+    // it to sweep. Saying so beats a sweep that reports zero photos.
+    if (gridScroller.readScrollPosition() === null) {
+      panel.setStatus('Go back to the album grid to read it.');
+      return;
+    }
     sweepRunning = true;
     stopSweepRequested = false;
     panel.setBusy(true);
@@ -261,6 +276,17 @@ export async function start() {
       // holds. Any other ending means "we stopped looking", which is not the
       // same thing and must never be shown as a total.
       albumPhotoCount = sweep.reachedBottom ? sweep.photoKeys.length : null;
+
+      // The order the sweep saw is the only thing the photo viewer can use, so
+      // it is written down even when the sweep stopped early: a part of the
+      // album is still better than nothing to walk.
+      try {
+        const withOrder = await store.writeAlbumOrder(albumAtStart, sweep.photoKeys, sweep.reachedBottom);
+        if (albumKey === albumAtStart) albumRecord = withOrder;
+      } catch (error) {
+        rememberFailures(['could not remember the album order: ' + String(error)]);
+      }
+
       const photosRead = String(sweep.photoKeys.length);
       if (sweep.reachedBottom) panel.setStatus('Read the whole album: ' + photosRead + ' photos.');
       else if (sweep.stoppedEarly) panel.setStatus('Stopped after ' + photosRead + ' photos.');
@@ -287,10 +313,14 @@ export async function start() {
   async function showPhotoWithoutLocation(direction) {
     if (sweepRunning || jumpRunning || albumKey === null) return;
 
-    // The panel also shows while a photo is open, and there is no grid to walk
-    // behind it. Saying so is better than a walk that finds nothing.
+    const page = readGooglePhotosLocation(location.href);
+    if (page.kind === 'photo-in-album' && page.photoKey !== null) {
+      openPhotoWithoutLocation(direction, page.photoKey);
+      return;
+    }
+
     if (gridScroller.readScrollPosition() === null) {
-      panel.setStatus('Go back to the album grid to use this.');
+      panel.setStatus('Open an album to use this.');
       return;
     }
 
@@ -348,6 +378,52 @@ export async function start() {
     }
   }
 
+  /**
+   * Opens the next, or previous, photo of this album that carries no location,
+   * while one photo is already open.
+   *
+   * There is no grid in the photo viewer, so nothing can be walked. The album
+   * order a sweep wrote down is the only thing that says which photo comes
+   * next, which is why an album nobody has swept cannot answer this and says so
+   * instead of guessing.
+   *
+   * Opening it is a plain page load. The extension does not press the Google
+   * Photos arrows and does not push its own history entry, because a history
+   * entry the Google Photos router does not act on would leave the address bar
+   * naming one photo while the screen shows another.
+   * @param {'next' | 'previous'} direction
+   * @param {string} currentPhotoKey
+   */
+  function openPhotoWithoutLocation(direction, currentPhotoKey) {
+    const search = findNextPhotoWithoutLocation({
+      order: albumRecord.order,
+      fromPhotoKey: currentPhotoKey,
+      direction,
+      readState: readStoredState,
+    });
+
+    if (search.outcome === 'photo-not-in-order') {
+      panel.setStatus('This album has not been read yet. Press Read whole album on the album grid first.');
+      return;
+    }
+
+    if (search.outcome === 'none-that-way' || search.photoKey === null) {
+      const nothingLeft =
+        direction === 'next'
+          ? 'No more photos without a location after this one.'
+          : 'No more photos without a location before this one.';
+      // An album read only in part can always be hiding one further on.
+      panel.setStatus(albumRecord.orderComplete ? nothingLeft : nothingLeft + ' Read the whole album to be sure.');
+      return;
+    }
+
+    const nextUrl = replacePhotoKey(location.href, search.photoKey);
+    if (nextUrl === null) return;
+
+    panel.setStatus(direction === 'next' ? 'Opening the next one...' : 'Opening the previous one...');
+    location.assign(nextUrl);
+  }
+
   const panel = createControlPanel({
     document,
 
@@ -369,6 +445,8 @@ export async function start() {
         photosPending: queue.pendingCount(),
         photosUnreadable: unreadablePhotos.size,
         photosInAlbum: albumPhotoCount,
+        photosInRememberedOrder: albumRecord.order.length,
+        rememberedOrderComplete: albumRecord.orderComplete,
         recentFailures,
         settings,
       });

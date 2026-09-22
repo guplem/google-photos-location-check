@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isAlbumContext, readAlbumKey, readGooglePhotosLocation, readPhotoKey } from '../src/googlePhotosPage.js';
+import {
+  isAlbumContext,
+  readAlbumKey,
+  readGooglePhotosLocation,
+  readPhotoKey,
+  replacePhotoKey,
+} from '../src/googlePhotosPage.js';
 
 test('reads the photo id from a photo URL', () => {
   assert.equal(readPhotoKey('https://photos.google.com/photo/AF1QipABC123'), 'AF1QipABC123');
@@ -37,4 +43,23 @@ test('only album pages get the panel and the badges', () => {
   assert.equal(isAlbumContext(readGooglePhotosLocation('https://photos.google.com/share/S1/photo/P1')), true);
   assert.equal(isAlbumContext(readGooglePhotosLocation('https://photos.google.com/photo/P1')), false);
   assert.equal(isAlbumContext(readGooglePhotosLocation('https://photos.google.com/')), false);
+});
+
+test('swaps one photo for another and keeps the rest of the URL', () => {
+  assert.equal(
+    replacePhotoKey('https://photos.google.com/album/XYZ/photo/P1', 'P2'),
+    'https://photos.google.com/album/XYZ/photo/P2',
+  );
+  assert.equal(
+    replacePhotoKey('https://photos.google.com/u/1/album/XYZ/photo/P1', 'P2'),
+    'https://photos.google.com/u/1/album/XYZ/photo/P2',
+  );
+  assert.equal(
+    replacePhotoKey('https://photos.google.com/share/S1/photo/P1?key=k', 'P2'),
+    'https://photos.google.com/share/S1/photo/P2?key=k',
+  );
+});
+
+test('refuses to swap the photo of a URL that names none', () => {
+  assert.equal(replacePhotoKey('https://photos.google.com/album/XYZ', 'P2'), null);
 });
