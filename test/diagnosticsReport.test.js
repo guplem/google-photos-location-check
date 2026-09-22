@@ -16,6 +16,8 @@ function buildInput(overrides = {}) {
     photosPending: 0,
     photosUnreadable: 0,
     photosInAlbum: null,
+    photosInRememberedOrder: 0,
+    rememberedOrderComplete: false,
     recentFailures: [],
     settings: DEFAULT_SETTINGS,
     ...overrides,
@@ -55,4 +57,16 @@ test('prints every setting, so a wrong one is visible', () => {
   const report = buildDiagnosticsReport(buildInput());
 
   for (const key of Object.keys(DEFAULT_SETTINGS)) assert.ok(report.includes(key + ':'), 'missing ' + key);
+});
+
+test('says when no album order is remembered, because the photo viewer buttons need one', () => {
+  assert.match(buildDiagnosticsReport(buildInput({})), /remembered album order: \(none/);
+  assert.match(
+    buildDiagnosticsReport(buildInput({ photosInRememberedOrder: 1611, rememberedOrderComplete: true })),
+    /remembered album order: 1611 photos, complete/,
+  );
+  assert.match(
+    buildDiagnosticsReport(buildInput({ photosInRememberedOrder: 300, rememberedOrderComplete: false })),
+    /remembered album order: 300 photos, in part/,
+  );
 });

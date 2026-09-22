@@ -25,6 +25,8 @@
  * @property {number} photosPending
  * @property {number} photosUnreadable
  * @property {number | null} photosInAlbum  Known only after a sweep reached the end of the album.
+ * @property {number} photosInRememberedOrder   How many photos the remembered album order holds.
+ * @property {boolean} rememberedOrderComplete  True when that order came from a sweep that reached the bottom.
  * @property {readonly string[]} recentFailures
  * @property {ExtensionSettings} settings
  */
@@ -58,6 +60,12 @@ export function buildDiagnosticsReport(input) {
       'with a location: ' + String(input.photosWithLocation),
       'without a location: ' + String(input.photosWithoutLocation),
       'waiting to be read: ' + String(input.photosPending),
+      // The photo viewer buttons cannot work without this, so it is the first
+      // thing to look at when someone says they do nothing.
+      'remembered album order: ' +
+        (input.photosInRememberedOrder === 0
+          ? '(none, so the photo viewer buttons cannot work yet)'
+          : String(input.photosInRememberedOrder) + ' photos' + (input.rememberedOrderComplete ? ', complete' : ', in part')),
       'could not be read: ' + String(input.photosUnreadable),
     ]),
   ];
