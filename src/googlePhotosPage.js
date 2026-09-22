@@ -71,6 +71,22 @@ export function isAlbumContext(location) {
 }
 
 /**
+ * Swaps the photo in a photo-in-album URL for another one of the same album.
+ *
+ * Built from the URL the page is already on, never from pieces. That keeps the
+ * profile prefix of a second Google account (`/u/1/`), the `/share/` form of a
+ * shared album, and any query the page carries, none of which this extension
+ * should have to know how to rebuild.
+ * @param {string} url
+ * @param {string} photoKey
+ * @returns {string | null} null when the URL names no photo to replace.
+ */
+export function replacePhotoKey(url, photoKey) {
+  if (PHOTO_KEY_PATTERN.exec(url) === null) return null;
+  return url.replace(PHOTO_KEY_PATTERN, '/photo/' + photoKey);
+}
+
+/**
  * Reads the photo id a grid thumbnail points at.
  * @param {HTMLAnchorElement} link
  * @returns {string | null}
