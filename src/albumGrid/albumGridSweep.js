@@ -61,8 +61,12 @@ export const DEFAULT_MAX_STEPS = 400;
  * Less than a whole screen on purpose. A full-screen step can skip a row when
  * the grid redraws late, and a skipped row is a photo that never gets a badge.
  * The overlap costs a few extra steps and removes that failure.
+ *
+ * Exported because `albumGridJump.js` steps the same grid and must move by the
+ * same amount: a jump that stepped further than a sweep could skip a photo the
+ * sweep would have found.
  */
-const STEP_FRACTION_OF_VIEWPORT = 0.8;
+export const STEP_FRACTION_OF_VIEWPORT = 0.8;
 
 /** Scroll positions this close to the end count as the end. */
 const BOTTOM_TOLERANCE_PX = 4;
