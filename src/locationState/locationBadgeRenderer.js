@@ -12,6 +12,11 @@
  * link and puts the icon element in place; `locationBadgeStyles.css` decides
  * how it looks. Keep it that way, so a look change needs no JavaScript.
  *
+ * The same file also carries the short-lived mark the jump buttons leave on the
+ * thumbnail they landed on, for the same reason: it is one more attribute on a
+ * link this renderer already owns, and the redraw keeps it on the right photo
+ * even while the grid recycles its elements underneath.
+ *
  * This is a thin DOM adapter and holds no decision, so it has no unit test.
  * `npm run typecheck` covers it, plus one run in Chrome.
  */
@@ -21,12 +26,21 @@ import { findGridPhotoLinks, readPhotoKeyFromLink } from '../googlePhotosPage.js
 const BADGE_CLASS = 'gplc-badge';
 const STATE_ATTRIBUTE = 'data-gplc-state';
 const POSITIONED_ATTRIBUTE = 'data-gplc-positioned';
+const HIGHLIGHT_ATTRIBUTE = 'data-gplc-highlight';
+
+/**
+ * How long the mark on a jumped-to thumbnail stays, in milliseconds.
+ *
+ * It must match the animation in `locationBadgeStyles.css`, or the mark either
+ * vanishes mid-fade or lingers as a dead ring.
+ */
+const HIGHLIGHT_MS = 2000;
 
 /** The badge this renderer put on one link, never a badge inside a nested element. */
 const OWN_BADGE_SELECTOR = ':scope > .gplc-badge';
 
 /** Every link this renderer has already touched. */
-const DECORATED_LINK_SELECTOR = 'a[data-gplc-state]';
+const DECORATED_LINK_SELECTOR = 'a[data-gplc-state], a[data-gplc-highlight]';
 
 const MISSING_LOCATION_TITLE = 'No location';
 const UNREADABLE_TITLE = 'Location could not be read';
@@ -79,6 +93,13 @@ export function createLocationBadgeRenderer(deps) {
   let observer = null;
   /** @type {number | null} */
   let scheduledFrame = null;
+  /**
+   * The photo a jump just landed on, marked until its timer runs out.
+   * @type {string | null}
+   */
+  let highlightedPhotoKey = null;
+  /** @type {number | null} */
+  let highlightTimer = null;
 
   /**
    * @param {BadgeState} state
@@ -123,10 +144,21 @@ export function createLocationBadgeRenderer(deps) {
     link.append(badge);
   }
 
+  /**
+   * @param {HTMLAnchorElement} link
+   * @param {boolean} marked
+   */
+  function applyHighlight(link, marked) {
+    if (link.hasAttribute(HIGHLIGHT_ATTRIBUTE) === marked) return;
+    if (marked) link.setAttribute(HIGHLIGHT_ATTRIBUTE, 'on');
+    else link.removeAttribute(HIGHLIGHT_ATTRIBUTE);
+  }
+
   /** @param {HTMLAnchorElement} link */
   function clearLink(link) {
     link.querySelector(OWN_BADGE_SELECTOR)?.remove();
     link.removeAttribute(STATE_ATTRIBUTE);
+    link.removeAttribute(HIGHLIGHT_ATTRIBUTE);
     if (link.hasAttribute(POSITIONED_ATTRIBUTE)) {
       link.style.removeProperty('position');
       link.removeAttribute(POSITIONED_ATTRIBUTE);
@@ -148,6 +180,9 @@ export function createLocationBadgeRenderer(deps) {
     const onScreen = [];
     for (const link of findGridPhotoLinks(ownerDocument)) {
       const photoKey = readPhotoKeyFromLink(link);
+      // The grid recycles its links, so the mark is re-decided on every redraw
+      // rather than left where it was put.
+      applyHighlight(link, photoKey !== null && photoKey === highlightedPhotoKey);
       if (photoKey === null) {
         applyState(link, 'unknown');
         continue;
@@ -174,6 +209,27 @@ export function createLocationBadgeRenderer(deps) {
     refresh,
     scheduleRefresh,
 
+    /**
+     * Marks one thumbnail for a moment, so a jump has somewhere visible to land.
+     *
+     * Only one photo is ever marked: a second jump takes the mark off the first.
+     * @param {string | null} photoKey  null takes the mark off.
+     */
+    highlightPhoto(photoKey) {
+      const view = ownerDocument.defaultView;
+      if (highlightTimer !== null) view?.clearTimeout(highlightTimer);
+      highlightTimer = null;
+      highlightedPhotoKey = photoKey;
+      refresh();
+
+      if (photoKey === null || view === null) return;
+      highlightTimer = view.setTimeout(() => {
+        highlightTimer = null;
+        highlightedPhotoKey = null;
+        refresh();
+      }, HIGHLIGHT_MS);
+    },
+
     start() {
       if (observer !== null) return;
       observer = new MutationObserver(scheduleRefresh);
@@ -190,6 +246,9 @@ export function createLocationBadgeRenderer(deps) {
     stop() {
       observer?.disconnect();
       observer = null;
+      if (highlightTimer !== null) ownerDocument.defaultView?.clearTimeout(highlightTimer);
+      highlightTimer = null;
+      highlightedPhotoKey = null;
       ownerDocument.defaultView?.removeEventListener('scroll', scheduleRefresh, { capture: true });
       for (const link of findGridPhotoLinks(ownerDocument)) clearLink(link);
     },

@@ -35,3 +35,36 @@ a[data-gplc-state='unknown'] > .gplc-badge {
 html[data-gplc-dim-located='on'] a[data-gplc-state='has-location'] {
   opacity: 0.4;
 }
+
+/* The thumbnail the "next without location" buttons just jumped to.
+
+   The ring fades out on its own, so it says "here" for a moment and then stops
+   competing with the badges. Its length must match HIGHLIGHT_MS in
+   locationBadgeRenderer.js, which is what actually takes the mark off. */
+a[data-gplc-highlight='on'] {
+  outline: 3px solid #ff8f00;
+  outline-offset: -3px;
+  animation: gplc-highlight-fade 2s ease-out forwards;
+}
+
+@keyframes gplc-highlight-fade {
+  0% {
+    outline-color: #ffffff;
+  }
+
+  25% {
+    outline-color: #ff8f00;
+  }
+
+  100% {
+    outline-color: rgb(255 143 0 / 0%);
+  }
+}
+
+/* Someone who asked for less motion still needs to see where the jump landed,
+   so the ring stays put instead of fading. */
+@media (prefers-reduced-motion: reduce) {
+  a[data-gplc-highlight='on'] {
+    animation: none;
+  }
+}
