@@ -2,7 +2,7 @@
 
 A Chrome extension that shows you, straight on the Google Photos album grid, which of your photos carry no location.
 
-Every thumbnail whose photo has no place attached gets a small orange badge with a crossed-out map pin in its top left corner. Nothing else changes. The extension only reads: it never opens a photo, never clicks anything, and never edits your library.
+Every thumbnail whose photo has no place attached gets a small orange badge with a crossed-out map pin in its top left corner. The extension never clicks anything and never edits your library. The one thing it can open on its own is another photo of the same album, and only when you press **Next without location** or **Previous without location** while a photo is already open; see below.
 
 ## Why you might want it
 
@@ -42,13 +42,11 @@ Once it finishes, the panel shows a real total, for example `158 without locatio
 
 ### Jumping to the next photo without a location
 
-Press **Next without location** or **Previous without location** in the panel to go straight to the closest photo that needs one, without scrolling past everything in between yourself.
+Press **Next without location** or **Previous without location** in the panel to go straight to the closest photo that needs one, without scrolling past everything in between yourself. Press either one again and it moves on to the next.
 
-The button scrolls the grid for you, brings that thumbnail into view, and rings it for two seconds so you can see where it stopped. It looks up whatever it scrolls past on the way, so it works even if you have not pressed **Read whole album** first. Press it again and it moves on to the next one.
+**On the album grid**, the button scrolls for you, brings that thumbnail into view, and rings it for two seconds so you can see where it stopped. It looks up whatever it scrolls past on the way, so it works even if you have not pressed **Read whole album** first. If there is nothing left to find in that direction, the grid goes back exactly where it was.
 
-If there is nothing left to find in that direction, the grid goes back exactly where it was.
-
-These buttons need the album grid on screen. If you have a photo open in the viewer, the panel tells you to go back to the grid instead.
+**In the photo viewer**, the same buttons open the next, or previous, photo of the album that has no location, so you can add a place, press Next, add a place, and so on. Opening a photo is a full page load, about a second: the extension will not press the Google Photos controls to get there. This needs the album order, and only **Read whole album** writes that down. So the first time, go back to the grid and press **Read whole album** once. After that the buttons work straight from the viewer. **Read whole album** itself still needs the grid, and the panel says so if you press it with a photo open.
 
 **What the badges mean:**
 
@@ -89,6 +87,9 @@ Usually Google refused a burst of requests. Scroll past them and back, and they 
 **Read whole album stops before the end.**
 Press it again and it carries on from the top, keeping everything it already read. If it stops in the same place every time, the grid is not scrolling the way the extension expects; press **Copy diagnostics** and open an issue.
 
+**The Next / Previous buttons say the album has not been read, or do nothing useful, while a photo is open.**
+Go back to the album grid and press **Read whole album** once. The buttons need the album order that only a sweep writes down; until one has run for this album, the viewer has nothing to walk.
+
 **A badge disagrees with what Google Photos shows.**
 Open the photo and press `i`. If the info panel shows a place and the badge says there is none, press **Read this album again** in the panel and scroll past that photo. If it still disagrees, that is a bug worth reporting.
 
@@ -107,7 +108,7 @@ Because the endpoint is Google's internal one and its answer has no field names,
 
 - Nothing leaves your browser. There is no server, no analytics, and no account.
 - The only network request the extension makes goes to `photos.google.com`, from inside the Google Photos page itself.
-- What it remembers is stored by Chrome on this computer: for each album, one entry per photo saying whether it has a location. Your settings are stored in your Chrome profile so they follow you between computers.
+- What it remembers is stored by Chrome on this computer: for each album, one entry per photo saying whether it has a location, plus the album's photo order once **Read whole album** has swept it. Your settings are stored in your Chrome profile so they follow you between computers.
 - The diagnostics report is built in the page and copied to your clipboard. It is never sent anywhere. Read it before you paste it somewhere public.
 
 ## Related extensions

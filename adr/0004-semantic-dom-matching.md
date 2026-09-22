@@ -19,7 +19,9 @@ This extension needs very little from the page, because `0002-ask-google-photos-
 
 Never match a class name. If a change seems to need one, the design is wrong; find another signal.
 
-**This extension never clicks anything, never presses a key, and never opens a photo.** It reads the grid and it writes its own badge elements into it. That is the whole of its contact with the page. Keep it that way: a feature that needs a click needs this ADR updated first, and it inherits the rule from the siblings that a click target must match a known word or the run stops.
+**This extension never clicks a Google Photos control and never presses a key.** It reads the grid, it writes its own badge elements into it, and, in the photo viewer only, it may load a new URL of its own construction. That is the whole of its contact with the page. Keep it that way: a feature that needs a click or a key press needs this ADR updated first, and it inherits the rule from the siblings that a click target must match a known word or the run stops.
+
+The one thing allowed to open a photo is the **Next / Previous without location** buttons, while a photo is already open in the viewer. `contentEntry.js`'s `openPhotoWithoutLocation` builds the target URL with `googlePhotosPage.js`'s `replacePhotoKey`, which swaps only the photo id in the URL the page is already on, and hands it to `location.assign`. This is a plain page load, not a click and not a key press, and it drives no Google Photos control. It was chosen over pushing our own history entry, because the Google Photos router would not act on an entry we push: the address bar would name one photo while the screen kept showing another. A page load costs a reload; that cost is accepted to keep the address bar honest.
 
 The one part of the page that carries meaning beyond the grid is the info panel's location row, whose accessible name is `Edit location` when a photo has a location and `Add a location` when it does not. Nothing reads it today. It is recorded here because it is the signal the fallback in `0002` would use, and because it is how a human checks whether a badge is right.
 
@@ -28,7 +30,7 @@ The one part of the page that carries meaning beyond the grid is the info panel'
 **Positive:**
 
 - A Google redesign that renames a class changes nothing.
-- The extension cannot damage a library, because it takes no action in the page at all. The worst failure is a wrong or missing badge.
+- The extension cannot damage a library, because it never clicks or presses a key. The worst failure is a wrong or missing badge, or, in the viewer, a page load to the wrong photo.
 
 **Trade-offs and follow-up:**
 

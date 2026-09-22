@@ -19,7 +19,9 @@ A write also matters. Answers arrive in batches while the user scrolls, so the e
 
 **Only a verdict is ever stored.** `has-location` and `no-location` are written; `unknown` is not. Writing `unknown` would tell the next visit that the photo is already answered, and the extension would never try it again. A photo it could not read must stay unread.
 
-Both areas are validated on read. `normalizeSettings` and `normalizeAlbumRecord` drop unknown keys and repair wrong values, because storage can hold data written by an older version of the extension. Whenever you add a field, extend the matching function and add a test.
+Each album record also holds `order`, the photo ids in album order as the last sweep saw them, and `orderComplete`, true only when that sweep reached the bottom. The photo viewer has no grid to walk, so a written-down order is the only way the extension can tell which photo comes next while one is open. Only a sweep writes `order`: the lazy lookups that fire while the user scrolls see photos in the order the grid happens to uncover them, which is not album order. An empty order is never written over a good one, because a sweep that saw nothing has learned nothing worth keeping.
+
+Both areas are validated on read. `normalizeSettings` and `normalizeAlbumRecord` drop unknown keys and repair wrong values, because storage can hold data written by an older version of the extension. A record from a version before `order` existed simply normalizes to an empty, incomplete order. Whenever you add a field, extend the matching function and add a test.
 
 The `:v1` suffix in each key is the migration escape hatch. If a record shape ever changes in a way `normalize` cannot repair, write `:v2` keys and leave the old ones to be cleared from the options page.
 
