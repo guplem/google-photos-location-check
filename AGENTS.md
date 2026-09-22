@@ -74,10 +74,11 @@ A content script listed in `manifest.json` cannot be an ES module. `isolatedWorl
 
 The JavaScript and the stylesheets do not call each other. `publishSettings` writes settings onto `<html>` as attributes, and the CSS reads them. Keep this table true.
 
-| Attribute                          | Read by                   | Values                                              |
-| ---------------------------------- | ------------------------- | --------------------------------------------------- |
-| `data-gplc-dim-located`            | `locationBadgeStyles.css` | `on` or absent                                      |
-| `data-gplc-state` (on a grid link) | `locationBadgeStyles.css` | `has-location`, `no-location`, `unknown`, `pending` |
+| Attribute                              | Read by                   | Values                                              |
+| -------------------------------------- | ------------------------- | --------------------------------------------------- |
+| `data-gplc-dim-located`                | `locationBadgeStyles.css` | `on` or absent                                      |
+| `data-gplc-state` (on a grid link)     | `locationBadgeStyles.css` | `has-location`, `no-location`, `unknown`, `pending` |
+| `data-gplc-highlight` (on a grid link) | `locationBadgeStyles.css` | `on` or absent                                      |
 
 ### How one badge happens, end to end
 
@@ -89,26 +90,29 @@ The JavaScript and the stylesheets do not call each other. `publishSettings` wri
 
 The **Read whole album** button changes none of that. `albumGridSweep.js` only scrolls the grid from top to bottom, which makes every thumbnail appear once, and steps 1 to 5 then happen by themselves. The sweep looks up nothing itself.
 
+The **Next / Previous without location** buttons scroll the same grid with `albumGridJump.js`, but they cannot stay off to the side the way the sweep does: they must know a screen's verdicts before they can tell whether it holds the photo they are after. So each screen they uncover is looked up and waited for before it is judged, which is why they work without the sweep having run first.
+
 ### File map
 
-| File                                         | Holds                                                                       |
-| -------------------------------------------- | --------------------------------------------------------------------------- |
-| `src/contentEntry.js`                        | Wiring only. Settings, routing, the debounce, storage writes.               |
-| `src/albumGrid/albumGridSweep.js`            | The top-to-bottom walk of the grid. Pure logic, no DOM.                     |
-| `src/albumGrid/albumGridScroller.js`         | **The only file that moves the grid.** Finds the real scroll container.     |
-| `src/googlePhotosPage.js`                    | URL parsing and the grid link selector. **All URL knowledge lives here.**   |
-| `src/diagnosticsReport.js`                   | Builds the report the panel copies. Pure logic, no DOM and no `chrome.*`.   |
-| `src/photosRpc/pageTokens.js`                | Reads the three request tokens out of the page's inline script text.        |
-| `src/photosRpc/batchExecuteMessage.js`       | Builds the request and reads the answers back. **All protocol shape here.** |
-| `src/photosRpc/photosRpcClient.js`           | Sends the request. The only file that calls `fetch`.                        |
-| `src/locationState/mediaLocationReading.js`  | One answer to a verdict. **The only file that knows index 13.**             |
-| `src/locationState/albumLocationScan.js`     | Batches, parallel requests, and the retry rules. Pure logic, no DOM.        |
-| `src/locationState/locationLookupQueue.js`   | Dedupes, drops what is known, runs one lookup at a time. Pure logic.        |
-| `src/locationState/locationStateStore.js`    | The per-album record in `chrome.storage.local`.                             |
-| `src/locationState/locationBadgeRenderer.js` | Draws the badges and reports what is on screen.                             |
-| `src/controlPanel/controlPanelController.js` | The in-page panel.                                                          |
-| `src/settings/extensionSettings.js`          | Defaults and `normalizeSettings`.                                           |
-| `options/optionsPage.*`                      | The settings page.                                                          |
+| File                                         | Holds                                                                            |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
+| `src/contentEntry.js`                        | Wiring only. Settings, routing, the debounce, storage writes.                    |
+| `src/albumGrid/albumGridSweep.js`            | The top-to-bottom walk of the grid. Pure logic, no DOM.                          |
+| `src/albumGrid/albumGridJump.js`             | The walk to the next, or previous, photo without a location. Pure logic, no DOM. |
+| `src/albumGrid/albumGridScroller.js`         | **The only file that moves the grid.** Finds the real scroll container.          |
+| `src/googlePhotosPage.js`                    | URL parsing and the grid link selector. **All URL knowledge lives here.**        |
+| `src/diagnosticsReport.js`                   | Builds the report the panel copies. Pure logic, no DOM and no `chrome.*`.        |
+| `src/photosRpc/pageTokens.js`                | Reads the three request tokens out of the page's inline script text.             |
+| `src/photosRpc/batchExecuteMessage.js`       | Builds the request and reads the answers back. **All protocol shape here.**      |
+| `src/photosRpc/photosRpcClient.js`           | Sends the request. The only file that calls `fetch`.                             |
+| `src/locationState/mediaLocationReading.js`  | One answer to a verdict. **The only file that knows index 13.**                  |
+| `src/locationState/albumLocationScan.js`     | Batches, parallel requests, and the retry rules. Pure logic, no DOM.             |
+| `src/locationState/locationLookupQueue.js`   | Dedupes, drops what is known, runs one lookup at a time. Pure logic.             |
+| `src/locationState/locationStateStore.js`    | The per-album record in `chrome.storage.local`.                                  |
+| `src/locationState/locationBadgeRenderer.js` | Draws the badges and reports what is on screen.                                  |
+| `src/controlPanel/controlPanelController.js` | The in-page panel.                                                               |
+| `src/settings/extensionSettings.js`          | Defaults and `normalizeSettings`.                                                |
+| `options/optionsPage.*`                      | The settings page.                                                               |
 
 ## Rules
 
@@ -116,9 +120,9 @@ The **Read whole album** button changes none of that. `albumGridSweep.js` only s
 - **Retry the request, never the verdict.** A network failure, a non-2xx answer, a timeout, and an answer that did not arrive are all worth another go, and `albumLocationScan.js` backs off before each one. `has-location` and `no-location` are facts about the photo, and the next attempt returns the same fact.
 - **Never store `unknown`.** `locationStateStore.js` writes verdicts only. Storing `unknown` would tell the next visit the photo is already answered, and it would never be read again.
 - **Never match a Google class name.** Google Photos ships obfuscated class names (`QxNbxb`, `p137Zd`) that change with every release. Match the URL, a link target (`a[href*="/photo/"]`), or an accessible name. See `adr/0004-semantic-dom-matching.md`.
-- **A sweep may only move the grid, and must put it back.** `albumGridSweep.js` scrolls and nothing else. It starts at the top, because the user may press the button half way down an album, and it returns the grid to where it found it in a `finally`, so a stop or a failure restores it too. Nothing covers the grid afterwards, so a user left at the bottom of a 1611-photo album has lost their place.
+- **A sweep may only move the grid, and must put it back.** `albumGridSweep.js` scrolls and nothing else. It starts at the top, because the user may press the button half way down an album, and it returns the grid to where it found it in a `finally`, so a stop or a failure restores it too. Nothing covers the grid afterwards, so a user left at the bottom of a 1611-photo album has lost their place. `albumGridJump.js` also scrolls the grid, but it must move the user: that is its whole job. It restores the position only when it finds nothing.
 - **Only `reachedBottom` licenses an album total.** A sweep that ran out of steps, was stopped, or met a grid that refused to move did not see the album. Showing its count as a total turns "we stopped looking" into "there is nothing left".
-- **Never act on the page.** Beyond the sweep's scrolling: no clicks, no key presses, no opening a photo. If a feature seems to need one, update `adr/0004-semantic-dom-matching.md` first, and take the sibling extensions' rule with it: a click target must match a known word, or the work stops.
+- **Never act on the page.** Beyond the sweep's and the jump's scrolling: no clicks, no key presses, no opening a photo. If a feature seems to need one, update `adr/0004-semantic-dom-matching.md` first, and take the sibling extensions' rule with it: a click target must match a known word, or the work stops.
 - **Keep DOM and `fetch` out of the logic.** `albumLocationScan.js` receives every action as a function, which is why its whole loop is unit tested with no browser and no network. Put each fragile call in a small adapter, keep the decision in a pure function, and test the pure function.
 - **Validate everything that comes out of storage.** `normalizeSettings` and `normalizeAlbumRecord` drop unknown keys and repair wrong values, because storage can hold data written by an older version. Extend those functions when you add a field, and add a test.
 - **Use the two storage areas as `adr/0006-extension-storage-layout.md` sets them.** Settings go in `chrome.storage.sync`; album answers go in `chrome.storage.local`, one key per album. Never put album answers in `sync`: a large album exceeds the per-item quota.
@@ -134,7 +138,7 @@ The **Read whole album** button changes none of that. `albumGridSweep.js` only s
 - **The page ships only the first 300 media ids.** The rest exist only once the virtualised grid has rendered them. That is why the extension reads photos as their thumbnails appear; see `adr/0007-lazy-lookups-driven-by-scrolling.md`. The RPC that pages the album list was not found: `snAcKc`, `EzkLze` and `nMFwOc` were each tried and none accepted the payload.
 - **`window.scrollTo` does not scroll the album grid.** Google Photos scrolls an inner container. `findScrollingAncestor` walks up from a grid link to the first ancestor whose `scrollHeight` exceeds its `clientHeight` and whose `overflow-y` is `auto` or `scroll`. This helper is copied from both sibling extensions, where it is proven against the live site.
 - **A scroll that moves nothing means one of two opposite things.** At the end of the grid it is the end, and on some albums it is the only signal, because the content height they report is never quite reached. Anywhere else it means the scroller was not found or the page is busy. `sweepAlbumGrid` tells them apart by asking whether the position is at the bottom, and only gives up after `MAX_STALLED_STEPS` when it is not.
-- **Step less than a whole screen.** `STEP_FRACTION_OF_VIEWPORT` is `0.8`. A full-screen step can skip a row when the grid redraws late, and a skipped row is a photo that never gets a badge.
+- **Step less than a whole screen.** `STEP_FRACTION_OF_VIEWPORT` is `0.8`, exported from `albumGridSweep.js` so `albumGridJump.js` steps by the same amount. A full-screen step can skip a row when the grid redraws late, and a skipped row is a photo that never gets a badge.
 - **Scroll with `behavior: 'instant'`.** A smooth scroll is still animating when the settle time is up, so the read happens mid-flight and misses rows.
 - **The grid is virtualised.** Google Photos keeps about fifty thumbnails in the page and reuses the same `<a>` elements as you scroll. One pass of decoration is never enough: `locationBadgeRenderer` watches for changes and stamps each link with `data-gplc-state` so a redraw is cheap. Document order is also not album order.
 - **A photo nobody has read yet gets no badge.** It is stamped `pending` and left plain. A badge that appears and then vanishes reads as a wrong answer.
@@ -152,7 +156,7 @@ Develop new behavior **test-first, red-green**: write a failing test that pins t
 
 What is testable here, and what is not:
 
-- **Testable, and always test-first:** the answer-to-verdict decision (`mediaLocationReading.js`), the request and response shapes (`batchExecuteMessage.js`), the token read (`pageTokens.js`), the scan loop with its retries (`albumLocationScan.js`), the queue (`locationLookupQueue.js`), the grid sweep (`albumGridSweep.js`), URL parsing (`googlePhotosPage.js`), settings validation (`extensionSettings.js`), the storage record shape (`locationStateStore.js`), and the report (`diagnosticsReport.js`).
+- **Testable, and always test-first:** the answer-to-verdict decision (`mediaLocationReading.js`), the request and response shapes (`batchExecuteMessage.js`), the token read (`pageTokens.js`), the scan loop with its retries (`albumLocationScan.js`), the queue (`locationLookupQueue.js`), the grid sweep (`albumGridSweep.js`), the grid jump to the next photo without a location (`albumGridJump.js`), URL parsing (`googlePhotosPage.js`), settings validation (`extensionSettings.js`), the storage record shape (`locationStateStore.js`), and the report (`diagnosticsReport.js`).
 - **Exempt, because a unit test would only re-state the code:** `photosRpcClient.js`, `albumGridScroller.js`, `locationBadgeRenderer.js`, `controlPanelController.js`, and `optionsPage.js`. Keep these thin: an adapter reads an element, sends a request, or writes an attribute, and it holds no decision.
 - **The safety net for the exempt parts** is the type check (`npm run typecheck` reads every file) plus one manual run in Chrome. `adr/0005-testing-strategy.md` records this split.
 

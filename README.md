@@ -40,6 +40,16 @@ How long it takes depends on the album, not on your connection: most of the wait
 
 Once it finishes, the panel shows a real total, for example `158 without location · 1611 of 1611 read`. If it was stopped, or could not reach the end, the total is left out on purpose: the extension will not present "we stopped looking" as "there is nothing left".
 
+### Jumping to the next photo without a location
+
+Press **Next without location** or **Previous without location** in the panel to go straight to the closest photo that needs one, without scrolling past everything in between yourself.
+
+The button scrolls the grid for you, brings that thumbnail into view, and rings it for two seconds so you can see where it stopped. It looks up whatever it scrolls past on the way, so it works even if you have not pressed **Read whole album** first. Press it again and it moves on to the next one.
+
+If there is nothing left to find in that direction, the grid goes back exactly where it was.
+
+These buttons need the album grid on screen. If you have a photo open in the viewer, the panel tells you to go back to the grid instead.
+
 **What the badges mean:**
 
 | Badge              | Means                                                                             |

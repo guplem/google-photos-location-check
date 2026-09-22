@@ -10,11 +10,15 @@ But the lazy behavior alone does not answer every question. It can say "of the p
 
 ## Decision
 
-**Two behaviors, and the slow one is never automatic.**
+**Three behaviors, and the slow ones are never automatic.**
 
 1. **By default, a photo is read when its thumbnail comes into the page, and at no other time.** `locationBadgeRenderer.js` already watches the grid, because the grid is virtualised and badges must be redrawn as elements are reused. On each redraw it reports the photo keys present. Those go to `locationLookupQueue.js`, which drops the ones already answered or already being asked about, and a short debounce lets a scroll settle before the request goes out. Opening an album therefore costs nothing and the first badges appear in well under a second.
 
 2. **A `Read whole album` button in the panel sweeps the grid on request.** `albumGridSweep.js` scrolls from the top to the bottom, which makes every thumbnail appear once. The sweep looks up nothing itself: the flow in point 1 does all the work, because a thumbnail that appears is a thumbnail the renderer reports. The button is off the critical path, and the extension is complete without anyone pressing it.
+
+3. **`Next without location` and `Previous without location` buttons step the grid to the next photo that carries no location, and wait for each screen they uncover.** `albumGridJump.js` steps the grid the same way the sweep does, the same fraction of a screen and the same settle time, so it never skips a row the sweep would have found. It cannot stay off the critical path like the sweep, because it has to decide whether the photo it is after is on the screen it just uncovered, and a screen the renderer has not reported yet holds photos nobody has asked about. So each screen goes to `waitForVerdicts` (the lookup queue, drained) before the walk reads it. Two rules set it apart from the sweep:
+   - **The grid is restored only when the walk finds nothing.** The sweep always gives the grid back, because it only counts. Here, moving the user to the photo is the point of the button, so a successful jump leaves the user looking at it.
+   - **`reachedEnd` never licenses an album total.** It is the jump's own flag, separate from the sweep's `reachedBottom`, and it only decides whether the panel says there is no more to see that way or that the walk stopped early.
 
 Three rules hold the sweep to the same standard as the rest of the extension.
 
