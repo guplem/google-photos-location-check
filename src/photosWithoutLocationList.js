@@ -58,6 +58,16 @@ function twoDigits(value) {
 }
 
 /**
+ * A tab or a line break inside a file name would add a column or a line to
+ * the list, so a spreadsheet would put the link in the wrong cell.
+ * @param {string} fileName
+ * @returns {string}
+ */
+function toOneCell(fileName) {
+  return fileName.replace(/[\t\r\n]/g, ' ');
+}
+
+/**
  * Writes `+02:00` for 7200000. A known offset of zero is `+00:00`, not `Z`, so
  * "UTC" and "the time zone is not known" stay apart.
  * @param {number | null} offsetMs
@@ -182,7 +192,7 @@ export function buildPhotosWithoutLocationList(input) {
   const lines = listed.map((photo) =>
     [
       photo.localTime ?? 'time unknown',
-      photo.entry.fileName ?? 'file name unknown',
+      photo.entry.fileName === null ? 'file name unknown' : toOneCell(photo.entry.fileName),
       buildAlbumPhotoUrl(input.pageUrl, photo.photoKey) ?? photo.photoKey,
     ].join('\t'),
   );

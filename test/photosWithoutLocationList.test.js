@@ -111,6 +111,14 @@ test('marks a photo whose file name is not known', () => {
   assert.equal(photoLines(list.text)[0]?.split('\t')[1], 'file name unknown');
 });
 
+test('replaces a tab or a line break in a file name with a space, so each photo stays one line of three columns', () => {
+  const list = buildPhotosWithoutLocationList(buildInput({ photos: { P1: entry({ fileName: 'a\tb\r\nc\nd.jpg' }) } }));
+
+  const lines = photoLines(list.text);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0]?.split('\t')[1], 'a b  c d.jpg');
+});
+
 test('lists only the photos without a location', () => {
   const list = buildPhotosWithoutLocationList(
     buildInput({
