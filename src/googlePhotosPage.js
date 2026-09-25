@@ -87,6 +87,21 @@ export function replacePhotoKey(url, photoKey) {
 }
 
 /**
+ * Builds the link to one photo of the album the page belongs to, from the album
+ * grid or from a photo of that album.
+ *
+ * Like `replacePhotoKey`, it keeps the rest of the URL the page is on, so the
+ * profile prefix, the `/share/` form, and the query all stay.
+ * @param {string} url
+ * @param {string} photoKey
+ * @returns {string | null} null when the URL names no album.
+ */
+export function buildAlbumPhotoUrl(url, photoKey) {
+  if (readAlbumKey(url) === null) return null;
+  return replacePhotoKey(url, photoKey) ?? url.replace(ALBUM_KEY_PATTERN, (albumPart) => albumPart + '/photo/' + photoKey);
+}
+
+/**
  * Reads the photo id a grid thumbnail points at.
  * @param {HTMLAnchorElement} link
  * @returns {string | null}
