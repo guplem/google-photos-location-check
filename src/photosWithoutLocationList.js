@@ -117,6 +117,10 @@ function compareText(left, right) {
 /**
  * Oldest first, then by file name, then by photo key so the order never
  * depends on the order of the record. A photo with no time goes last.
+ *
+ * The sort uses `takenAt`, which is UTC, never the local time. Two photos
+ * from two time zones must follow the real moment, because a Timeline export
+ * follows it too.
  * @param {ListedPhoto} left
  * @param {ListedPhoto} right
  * @returns {number}
@@ -187,6 +191,7 @@ export function buildPhotosWithoutLocationList(input) {
         ' press Read this album again, then Read whole album, to fill them in.',
     );
   }
+  header.push('Sorted by the moment each photo was taken, oldest first.');
   header.push("Columns, separated by tabs: the time taken (the photo's local time, ISO 8601), the file name, the link.");
 
   const lines = listed.map((photo) =>

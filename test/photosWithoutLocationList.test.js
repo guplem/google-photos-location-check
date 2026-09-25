@@ -90,6 +90,29 @@ test('sorts the photos from oldest to newest, and by file name when the time is 
   );
 });
 
+test('sorts by the real moment each photo was taken, not by the local clock time', () => {
+  const hour = 3600000;
+  const list = buildPhotosWithoutLocationList(
+    buildInput({
+      photos: {
+        // 10:00 UTC, which reads 20:00 on the local clock at +10:00.
+        first: entry({ fileName: 'first.jpg', takenAt: Date.UTC(2021, 4, 12, 10), timeZoneOffsetMs: 10 * hour }),
+        // 11:00 UTC, which reads 06:00 on the local clock at -05:00.
+        second: entry({ fileName: 'second.jpg', takenAt: Date.UTC(2021, 4, 12, 11), timeZoneOffsetMs: -5 * hour }),
+      },
+    }),
+  );
+
+  assert.deepEqual(
+    photoLines(list.text).map((line) => line.split('\t').slice(0, 2)),
+    [
+      ['2021-05-12T20:00:00+10:00', 'first.jpg'],
+      ['2021-05-12T06:00:00-05:00', 'second.jpg'],
+    ],
+  );
+  assert.match(list.text, /^# Sorted by the moment each photo was taken, oldest first\./m);
+});
+
 test('keeps a photo whose time is not known, at the end, marked as "time unknown"', () => {
   const list = buildPhotosWithoutLocationList(
     buildInput({
