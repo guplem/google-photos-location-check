@@ -56,6 +56,17 @@ const TIME_ZONE_OFFSET_INDEX = 4;
 /** Degree values arrive multiplied by ten million. */
 const DEGREES_PER_UNIT = 1e-7;
 
+// A moved index can put any number at index 3 or 4. A number that cannot be a
+// photo's time must read as "time unknown", never as a false time in the list.
+const EARLIEST_TAKEN_AT_MS = Date.UTC(1900, 0, 1);
+const LATEST_TAKEN_AT_MS = Date.UTC(10000, 0, 1) - 1;
+// A flag, a count, or a file size reads as a time close to 1 January 1970.
+// No real photo in an album is that close to the epoch.
+const EPOCH_MARGIN_MS = Date.UTC(1971, 0, 1);
+const MS_PER_MINUTE = 60000;
+/** Real time zones reach from -12:00 to +14:00. */
+const LARGEST_OFFSET_MS = 14 * 60 * MS_PER_MINUTE;
+
 /**
  * @typedef {'has-location' | 'no-location'} LocationState
  *
@@ -87,6 +98,25 @@ function isArray(value) {
  */
 function readFiniteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number | null} null unless the value is a time in the years 1900 to 9999, UTC, and not within a year of the epoch.
+ */
+function readTakenAt(value) {
+  const takenAt = readFiniteNumber(value);
+  if (takenAt === null || takenAt < EARLIEST_TAKEN_AT_MS || takenAt > LATEST_TAKEN_AT_MS) return null;
+  return Math.abs(takenAt) < EPOCH_MARGIN_MS ? null : takenAt;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number | null} null unless the value is a whole number of minutes within 14 hours.
+ */
+function readTimeZoneOffset(value) {
+  const offsetMs = readFiniteNumber(value);
+  return offsetMs !== null && offsetMs % MS_PER_MINUTE === 0 && Math.abs(offsetMs) <= LARGEST_OFFSET_MS ? offsetMs : null;
 }
 
 /**
@@ -147,8 +177,8 @@ export function readMediaLocation(payload, expectedMediaId) {
 
   const fileNameValue = photo[FILE_NAME_INDEX];
   const fileName = typeof fileNameValue === 'string' && fileNameValue !== '' ? fileNameValue : null;
-  const takenAt = readFiniteNumber(photo[TAKEN_AT_INDEX]);
-  const timeZoneOffsetMs = readFiniteNumber(photo[TIME_ZONE_OFFSET_INDEX]);
+  const takenAt = readTakenAt(photo[TAKEN_AT_INDEX]);
+  const timeZoneOffsetMs = readTimeZoneOffset(photo[TIME_ZONE_OFFSET_INDEX]);
 
   const location = photo[LOCATION_INDEX];
   if (location === null || location === undefined) {

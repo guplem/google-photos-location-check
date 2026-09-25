@@ -153,6 +153,51 @@ test('reports a time it cannot read as null and keeps the verdict', () => {
   }
 });
 
+test('rejects a time outside the years 1900 to 9999, or close to 1970, and keeps a good offset', () => {
+  const notAPhotoTime = [
+    ['a small number, which would read as 1970', 1234567],
+    ['a time before 1900', Date.UTC(1899, 11, 31)],
+    ['a time that needs an extended year', Date.UTC(10000, 0, 1)],
+  ];
+  for (const [name, takenAt] of notAPhotoTime) {
+    const reading = readMediaLocation(buildAnswer({ location: null, takenAt, timeZoneOffsetMs: 7200000 }), MEDIA_ID);
+
+    assert.equal(reading?.state, 'no-location', String(name));
+    assert.equal(reading?.takenAt, null, String(name));
+    assert.equal(reading?.timeZoneOffsetMs, 7200000, String(name));
+  }
+});
+
+test('accepts a time at each end of the years 1900 to 9999', () => {
+  for (const takenAt of [Date.UTC(1900, 0, 1), Date.UTC(10000, 0, 1) - 1]) {
+    assert.equal(readMediaLocation(buildAnswer({ location: null, takenAt }), MEDIA_ID)?.takenAt, takenAt);
+  }
+});
+
+test('rejects an offset that is not a whole minute within 14 hours and keeps a good time', () => {
+  const notAnOffset = [
+    ['not a whole minute', 7200001],
+    ['more than 14 hours east', 14 * 3600000 + 60000],
+    ['more than 14 hours west', -(14 * 3600000 + 60000)],
+  ];
+  for (const [name, timeZoneOffsetMs] of notAnOffset) {
+    const reading = readMediaLocation(buildAnswer({ location: null, takenAt: 1620854449439, timeZoneOffsetMs }), MEDIA_ID);
+
+    assert.equal(reading?.state, 'no-location', String(name));
+    assert.equal(reading?.timeZoneOffsetMs, null, String(name));
+    assert.equal(reading?.takenAt, 1620854449439, String(name));
+  }
+});
+
+test('accepts an offset of exactly 14 hours either way, and a half-hour offset', () => {
+  for (const timeZoneOffsetMs of [14 * 3600000, -14 * 3600000, 5 * 3600000 + 30 * 60000]) {
+    assert.equal(
+      readMediaLocation(buildAnswer({ location: null, timeZoneOffsetMs }), MEDIA_ID)?.timeZoneOffsetMs,
+      timeZoneOffsetMs,
+    );
+  }
+});
+
 test('keeps a zero time zone offset, because UTC is a real offset', () => {
   const reading = readMediaLocation(buildAnswer({ location: null, timeZoneOffsetMs: 0 }), MEDIA_ID);
 

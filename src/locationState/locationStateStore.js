@@ -76,7 +76,7 @@ export function createEmptyAlbumRecord(albumKey) {
  * @param {unknown} value
  * @returns {number | null}
  */
-function readStoredNumber(value) {
+function readFiniteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
@@ -101,8 +101,8 @@ export function normalizeAlbumRecord(albumKey, stored) {
       state: candidate.state,
       checkedAt: typeof candidate.checkedAt === 'number' ? candidate.checkedAt : 0,
       fileName: typeof candidate.fileName === 'string' && candidate.fileName !== '' ? candidate.fileName : null,
-      takenAt: readStoredNumber(candidate.takenAt),
-      timeZoneOffsetMs: readStoredNumber(candidate.timeZoneOffsetMs),
+      takenAt: readFiniteNumber(candidate.takenAt),
+      timeZoneOffsetMs: readFiniteNumber(candidate.timeZoneOffsetMs),
     };
   }
 
