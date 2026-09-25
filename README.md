@@ -62,7 +62,7 @@ Each line has three columns, separated by tabs, so the list pastes into a spread
 2. The file name.
 3. A link that opens the photo.
 
-The lines that start with `#` say how many photos the list holds and whether the whole album was read. The list holds only the photos the extension has read. Press **Read whole album** first to get every one. A photo with no known time appears at the end as `time unknown`. A photo that could not be read (the grey badge) is left out, and the header counts it.
+The lines that start with `#` say how many photos the list holds. They say "The whole album was read." only when a **Read whole album** reached the end, every photo has an answer, and no photo waits to be read. Otherwise they say how many photos have no answer yet or still wait to be read. The list holds only the photos the extension has read. Press **Read whole album** first to get every one. A photo with no known time appears at the end as `time unknown`. A photo that could not be read (the grey badge) is left out, and the header counts it.
 
 To find where each photo was taken, export your Google Maps Timeline, then look up the time of each line in it. Then add the place to the photo in Google Photos. Google Maps keeps the Timeline on your phone, so export it from the Timeline settings of the Google Maps app.
 

@@ -30,12 +30,15 @@ const MS_PER_MINUTE = 60000;
  * @property {string} albumKey
  * @property {string} pageUrl  The URL the page is on. The photo links keep its account prefix and query.
  * @property {Readonly<Record<string, PhotoLocationEntry>>} photos
+ * @property {readonly string[]} order  The photos of the album, as the last sweep saw them.
  * @property {boolean} orderComplete  True only when a sweep reached the bottom of the album.
+ * @property {number} photosPending  Photos that wait in the lookup queue.
  * @property {number} photosUnreadable  Photos that answered "cannot tell" during this visit.
  *
  * @typedef {object} PhotosWithoutLocationList
  * @property {string} text
  * @property {number} photoCount
+ * @property {boolean} complete  True only when every photo of the album has an answer.
  */
 
 /**
@@ -131,18 +134,40 @@ export function buildPhotosWithoutLocationList(input) {
 
   const withMissingDetails = listed.filter((photo) => photo.localTime === null || photo.entry.fileName === null).length;
 
+  // A photo that answered "cannot tell" is never stored, so a complete order
+  // with a gap in the record is an album that was seen but not fully answered.
+  // With a complete order, the gaps already hold this visit's unreadable
+  // photos, so the header counts them from the order alone.
+  const photosWithNoAnswer = input.orderComplete
+    ? input.order.filter((photoKey) => input.photos[photoKey] === undefined).length
+    : input.photosUnreadable;
+  // A list from a half-read album looks exactly like a complete one. Only a
+  // sweep that reached the bottom, with an answer for every photo and nothing
+  // left in the queue, may call it complete.
+  const complete = input.orderComplete && photosWithNoAnswer === 0 && input.photosPending === 0;
+
   /** @type {string[]} */
   const header = [
     'Photos without a location in album ' + input.albumKey,
     countOf(listed.length, 'photo', 'photos') + ' without a location',
-    // A list from a half-read album looks exactly like a complete one. Only a
-    // sweep that reached the bottom may call it complete.
-    input.orderComplete
-      ? 'The whole album was read.'
-      : 'The album was not read to the end, so this list may be incomplete. Press Read whole album to read all of it.',
   ];
-  if (input.photosUnreadable > 0) {
-    header.push(countOf(input.photosUnreadable, 'photo', 'photos') + ' could not be read, so this list leaves them out.');
+  if (complete) header.push('The whole album was read.');
+  if (!input.orderComplete) {
+    header.push('The album was not read to the end, so this list may be incomplete. Press Read whole album to read all of it.');
+  }
+  if (photosWithNoAnswer > 0) {
+    header.push(
+      countOf(photosWithNoAnswer, 'photo has', 'photos have') +
+        ' no answer yet, so this list leaves ' +
+        (photosWithNoAnswer === 1 ? 'it' : 'them') +
+        ' out.',
+    );
+  }
+  if (input.photosPending > 0) {
+    header.push(
+      countOf(input.photosPending, 'photo is', 'photos are') +
+        ' still waiting to be read. Copy the list again when they are done.',
+    );
   }
   if (withMissingDetails > 0) {
     header.push(
@@ -164,5 +189,6 @@ export function buildPhotosWithoutLocationList(input) {
   return {
     text: [...header.map((line) => HEADER_PREFIX + line), '', ...lines].join('\n'),
     photoCount: listed.length,
+    complete,
   };
 }

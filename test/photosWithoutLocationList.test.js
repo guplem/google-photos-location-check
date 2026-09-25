@@ -20,13 +20,20 @@ function entry(overrides = {}) {
   };
 }
 
-/** @param {Partial<import('../src/photosWithoutLocationList.js').PhotosWithoutLocationListInput>} overrides */
+/**
+ * A complete album by default, whose order holds exactly the photos given.
+ * @param {Partial<import('../src/photosWithoutLocationList.js').PhotosWithoutLocationListInput>} overrides
+ * @returns {import('../src/photosWithoutLocationList.js').PhotosWithoutLocationListInput}
+ */
 function buildInput(overrides = {}) {
+  const photos = overrides.photos ?? { P1: entry() };
   return {
     albumKey: 'album-1',
     pageUrl: 'https://photos.google.com/album/album-1',
-    photos: { P1: entry() },
+    photos,
+    order: Object.keys(photos),
     orderComplete: true,
+    photosPending: 0,
     photosUnreadable: 0,
     ...overrides,
   };
@@ -138,8 +145,34 @@ test('says whether the whole album was read', () => {
 });
 
 test('says which photos could not be read and are left out', () => {
-  assert.doesNotMatch(buildPhotosWithoutLocationList(buildInput()).text, /could not be read/);
-  assert.match(buildPhotosWithoutLocationList(buildInput({ photosUnreadable: 4 })).text, /^# 4 photos could not be read/m);
+  assert.doesNotMatch(buildPhotosWithoutLocationList(buildInput()).text, /no answer yet/);
+  assert.match(
+    buildPhotosWithoutLocationList(buildInput({ orderComplete: false, photosUnreadable: 4 })).text,
+    /^# 4 photos have no answer yet, so this list leaves them out\./m,
+  );
+});
+
+test('is not complete when the order is complete but one photo in the order has no entry', () => {
+  const list = buildPhotosWithoutLocationList(buildInput({ order: ['P1', 'unread'], photosUnreadable: 1 }));
+
+  assert.equal(list.complete, false);
+  assert.doesNotMatch(list.text, /The whole album was read/);
+  // The photo in the order and the photo that could not be read are the same
+  // one, so the header counts it once.
+  assert.match(list.text, /^# 1 photo has no answer yet, so this list leaves it out\./m);
+});
+
+test('is not complete while lookups are still pending', () => {
+  const list = buildPhotosWithoutLocationList(buildInput({ photosPending: 2 }));
+
+  assert.equal(list.complete, false);
+  assert.doesNotMatch(list.text, /The whole album was read/);
+  assert.match(list.text, /^# 2 photos are still waiting to be read\. Copy the list again when they are done\.$/m);
+});
+
+test('is complete only when the order is complete, every photo has an answer, and nothing is pending', () => {
+  assert.equal(buildPhotosWithoutLocationList(buildInput()).complete, true);
+  assert.equal(buildPhotosWithoutLocationList(buildInput({ orderComplete: false })).complete, false);
 });
 
 test('says how to fill in a time or file name that an older version did not keep', () => {

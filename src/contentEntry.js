@@ -461,7 +461,9 @@ export async function start() {
         albumKey,
         pageUrl: location.href,
         photos: albumRecord.photos,
+        order: albumRecord.order,
         orderComplete: albumRecord.orderComplete,
+        photosPending: queue.pendingCount(),
         photosUnreadable: unreadablePhotos.size,
       });
     },
