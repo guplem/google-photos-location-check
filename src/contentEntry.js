@@ -57,6 +57,7 @@ import {
   summarizeAlbumRecord,
 } from './locationState/locationStateStore.js';
 import { createPhotosRpcClient } from './photosRpc/photosRpcClient.js';
+import { buildPhotosWithoutLocationList } from './photosWithoutLocationList.js';
 import { DEFAULT_SETTINGS, loadSettings } from './settings/extensionSettings.js';
 
 /** Google Photos rewrites the address bar with no event, so polling is the only reliable watch. */
@@ -451,6 +452,17 @@ export async function start() {
         rememberedOrderComplete: albumRecord.orderComplete,
         recentFailures,
         settings,
+      });
+    },
+
+    buildPhotosWithoutLocationList: async () => {
+      if (albumKey === null) throw new Error('this page is not an album');
+      return buildPhotosWithoutLocationList({
+        albumKey,
+        pageUrl: location.href,
+        photos: albumRecord.photos,
+        orderComplete: albumRecord.orderComplete,
+        photosUnreadable: unreadablePhotos.size,
       });
     },
 

@@ -4,8 +4,9 @@
  * It answers one question at a glance: how many photos of this album have no
  * location. Badges mark them one by one; this is the total. It also carries the
  * button that reads the whole album at once, the pair that walks the grid from
- * one photo without a location to the next, and the two buttons a user needs
- * when something looks wrong: copy the diagnostics, and forget what is
+ * one photo without a location to the next, the button that copies the list of
+ * photos without a location, and the two buttons a user needs when something
+ * looks wrong: copy the diagnostics, and forget what is
  * remembered about this album so it is read again.
  *
  * ## Why every button catches everything
@@ -15,7 +16,8 @@
  * clipboard is the worst of these: Chrome leaves `navigator.clipboard.writeText`
  * unresolved when it decides the document is not focused. So the copy has a
  * deadline and a fallback, and the report reaches the console before either
- * runs, which means it is never lost.
+ * runs, which means it is never lost. The list of photos without a location
+ * takes the same path.
  *
  * This is a thin DOM adapter and holds no decision, so it has no unit test.
  */
@@ -37,6 +39,7 @@ const COPY_TIMEOUT_MS = 2000;
  * @property {() => void} onStopReading
  * @property {(direction: 'next' | 'previous') => Promise<void>} onJumpToPhotoWithoutLocation
  * @property {() => Promise<string>} buildReport
+ * @property {() => Promise<import('../photosWithoutLocationList.js').PhotosWithoutLocationList>} buildPhotosWithoutLocationList
  * @property {() => Promise<void>} onRecheckAlbum
  * @property {() => void} onOpenOptions
  */
@@ -47,10 +50,11 @@ const COPY_TIMEOUT_MS = 2000;
  * The console line comes first on purpose: it is the one path that cannot fail.
  * @param {Document} ownerDocument
  * @param {string} text
+ * @param {string} consoleLabel  Names the text in the console, such as "diagnostics report".
  * @returns {Promise<boolean>}
  */
-async function copyText(ownerDocument, text) {
-  console.info('[Location Check] diagnostics report\n' + text);
+async function copyText(ownerDocument, text, consoleLabel) {
+  console.info('[Location Check] ' + consoleLabel + '\n' + text);
 
   const view = ownerDocument.defaultView;
   if (view?.navigator.clipboard !== undefined) {
@@ -164,12 +168,33 @@ export function createControlPanel(deps) {
     buttons.append(
       sweepButton,
       ...jumpButtons,
+      createButton('Copy photos without location', () => {
+        void (async () => {
+          setStatus('Building the list...');
+          try {
+            const list = await deps.buildPhotosWithoutLocationList();
+            const copied = await copyText(ownerDocument, list.text, 'photos without a location');
+            setStatus(
+              copied
+                ? 'Copied ' + String(list.photoCount) + (list.photoCount === 1 ? ' photo' : ' photos') + ' without a location.'
+                : 'Could not copy. The list is in the console.',
+            );
+          } catch (error) {
+            console.error('[Location Check] could not build the list of photos without a location', error);
+            setStatus('Could not build the list. See the console.');
+          }
+        })();
+      }),
       createButton('Copy diagnostics', () => {
         void (async () => {
           setStatus('Building the report...');
           try {
             const report = await deps.buildReport();
-            setStatus((await copyText(ownerDocument, report)) ? 'Copied.' : 'Could not copy. The report is in the console.');
+            setStatus(
+              (await copyText(ownerDocument, report, 'diagnostics report'))
+                ? 'Copied.'
+                : 'Could not copy. The report is in the console.',
+            );
           } catch (error) {
             console.error('[Location Check] could not build the report', error);
             setStatus('Could not build the report. See the console.');
