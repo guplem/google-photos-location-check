@@ -48,6 +48,26 @@ Press **Next without location** or **Previous without location** in the panel to
 
 **In the photo viewer**, the same buttons open the next, or previous, photo of the album that has no location, so you can add a place, press Next, add a place, and so on. Opening a photo is a full page load, about a second: the extension will not press the Google Photos controls to get there. This needs the album order, and only **Read whole album** writes that down. So the first time, go back to the grid and press **Read whole album** once. After that the buttons work straight from the viewer. **Read whole album** itself still needs the grid, and the panel says so if you press it with a photo open.
 
+### Copying the photos without a location
+
+Press **Copy photos without location** in the panel. It copies a list of every photo in this album that has no location, sorted from oldest to newest by the time it was taken.
+
+Each line has three columns, separated by tabs, so the list pastes into a spreadsheet as three columns:
+
+```text
+2021-05-12T23:20:49+02:00	IMG_20210512_232045262_HDR.jpg	https://photos.google.com/album/.../photo/...
+```
+
+1. The time the photo was taken, in the photo's own local time, as an ISO 8601 timestamp (a standard date format, `YYYY-MM-DDThh:mm:ss` plus the time zone).
+2. The file name.
+3. A link that opens the photo.
+
+The lines that start with `#` say how many photos the list holds and whether the whole album was read. The list holds only the photos the extension has read. Press **Read whole album** first to get every one. A photo with no known time appears at the end as `time unknown`. A photo that could not be read (the grey badge) is left out, and the header counts it.
+
+To find where each photo was taken, export your Google Maps Timeline, then look up the time of each line in it. Then add the place to the photo in Google Photos. Google Maps keeps the Timeline on your phone, so export it from the Timeline settings of the Google Maps app.
+
+If some lines say `time unknown` or `file name unknown` for photos that do have them, an older version of the extension read them. Press **Read this album again**, then **Read whole album**, to fill them in.
+
 **What the badges mean:**
 
 | Badge              | Means                                                                             |
@@ -108,8 +128,8 @@ Because the endpoint is Google's internal one and its answer has no field names,
 
 - Nothing leaves your browser. There is no server, no analytics, and no account.
 - The only network request the extension makes goes to `photos.google.com`, from inside the Google Photos page itself.
-- What it remembers is stored by Chrome on this computer: for each album, one entry per photo saying whether it has a location, plus the album's photo order once **Read whole album** has swept it. Your settings are stored in your Chrome profile so they follow you between computers.
-- The diagnostics report is built in the page and copied to your clipboard. It is never sent anywhere. Read it before you paste it somewhere public.
+- What it remembers is stored by Chrome on this computer: for each album, one entry per photo saying whether it has a location, with its file name and the time it was taken, plus the album's photo order once **Read whole album** has swept it. Your settings are stored in your Chrome profile so they follow you between computers.
+- The diagnostics report and the list of photos without a location are built in the page and copied to your clipboard. They are never sent anywhere. Read them before you paste them somewhere public: the list holds your file names, times, and photo links.
 
 ## Related extensions
 
