@@ -11,12 +11,19 @@
  * | ----- | -------------------------------------------------------- |
  * | 0     | the media id, the same one we asked for                  |
  * | 2     | the file name, such as `PXL_20260816_115242847.jpg`      |
+ * | 3     | the time the photo was taken, in milliseconds UTC        |
+ * | 4     | the offset of the photo's time zone, in milliseconds     |
  * | 13    | the location, or `null` when the photo carries none      |
  *
  * The location itself is `[[latitudeE7, longitudeE7], flag, [placeEntry, ...]]`.
  * `E7` means the number is the real degree value times ten million, so
  * `53443938` is `5.3443938`. A place entry carries the name Google shows in the
  * info panel, such as `Khemical`.
+ *
+ * The time and the offset add up to the photo's own local time: `1620854449439`
+ * at `7200000` is 21:20:49 UTC, which is 23:20:49 at +02:00. They only describe
+ * the photo. They never change the verdict, so a time that cannot be read is
+ * `null` and the verdict still stands.
  *
  * ## Why `null` is a real answer
  *
@@ -40,6 +47,12 @@ const MEDIA_ID_INDEX = 0;
 /** Index of the file name inside the photo array. */
 const FILE_NAME_INDEX = 2;
 
+/** Index of the time the photo was taken inside the photo array. */
+const TAKEN_AT_INDEX = 3;
+
+/** Index of the time zone offset inside the photo array. */
+const TIME_ZONE_OFFSET_INDEX = 4;
+
 /** Degree values arrive multiplied by ten million. */
 const DEGREES_PER_UNIT = 1e-7;
 
@@ -54,6 +67,8 @@ const DEGREES_PER_UNIT = 1e-7;
  * @property {string} mediaId
  * @property {LocationState} state
  * @property {string | null} fileName    Shown in the diagnostics report, so a user can find the photo.
+ * @property {number | null} takenAt           Milliseconds since the epoch, UTC.
+ * @property {number | null} timeZoneOffsetMs  Add it to `takenAt` to get the photo's local time.
  * @property {string | null} placeName   The name the info panel shows, when there is a location.
  * @property {Coordinates | null} coordinates
  */
@@ -64,6 +79,14 @@ const DEGREES_PER_UNIT = 1e-7;
  */
 function isArray(value) {
   return Array.isArray(value);
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
+function readFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -124,10 +147,20 @@ export function readMediaLocation(payload, expectedMediaId) {
 
   const fileNameValue = photo[FILE_NAME_INDEX];
   const fileName = typeof fileNameValue === 'string' && fileNameValue !== '' ? fileNameValue : null;
+  const takenAt = readFiniteNumber(photo[TAKEN_AT_INDEX]);
+  const timeZoneOffsetMs = readFiniteNumber(photo[TIME_ZONE_OFFSET_INDEX]);
 
   const location = photo[LOCATION_INDEX];
   if (location === null || location === undefined) {
-    return { mediaId: expectedMediaId, state: 'no-location', fileName, placeName: null, coordinates: null };
+    return {
+      mediaId: expectedMediaId,
+      state: 'no-location',
+      fileName,
+      takenAt,
+      timeZoneOffsetMs,
+      placeName: null,
+      coordinates: null,
+    };
   }
 
   const coordinates = isArray(location) ? readCoordinates(location[0]) : null;
@@ -139,6 +172,8 @@ export function readMediaLocation(payload, expectedMediaId) {
     mediaId: expectedMediaId,
     state: 'has-location',
     fileName,
+    takenAt,
+    timeZoneOffsetMs,
     placeName: isArray(location) ? readFirstPlaceName(location[2]) : null,
     coordinates,
   };
