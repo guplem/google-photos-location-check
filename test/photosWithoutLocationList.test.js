@@ -113,6 +113,20 @@ test('sorts by the real moment each photo was taken, not by the local clock time
   assert.match(list.text, /^# Sorted by the moment each photo was taken, oldest first\./m);
 });
 
+test('links each photo to itself when the page is the photo viewer', () => {
+  const list = buildPhotosWithoutLocationList(
+    buildInput({
+      pageUrl: 'https://photos.google.com/album/A/photo/P1',
+      photos: { P1: entry({ takenAt: 1620854449439 }), P2: entry({ takenAt: 1620854449440 }) },
+    }),
+  );
+
+  assert.deepEqual(
+    photoLines(list.text).map((line) => line.split('\t')[2]),
+    ['https://photos.google.com/album/A/photo/P1', 'https://photos.google.com/album/A/photo/P2'],
+  );
+});
+
 test('keeps a photo whose time is not known, at the end, marked as "time unknown"', () => {
   const list = buildPhotosWithoutLocationList(
     buildInput({
