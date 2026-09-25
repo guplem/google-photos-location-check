@@ -175,6 +175,18 @@ test('is complete only when the order is complete, every photo has an answer, an
   assert.equal(buildPhotosWithoutLocationList(buildInput({ orderComplete: false })).complete, false);
 });
 
+test('sums up what it copied for the panel', () => {
+  assert.equal(buildPhotosWithoutLocationList(buildInput()).summary, 'Copied 1 photo without a location.');
+  assert.equal(
+    buildPhotosWithoutLocationList(buildInput({ photos: { P1: entry(), P2: entry() } })).summary,
+    'Copied 2 photos without a location.',
+  );
+  assert.equal(
+    buildPhotosWithoutLocationList(buildInput({ photosPending: 1 })).summary,
+    'Copied 1 photo without a location. The list may be incomplete: its first lines say why.',
+  );
+});
+
 test('says how to fill in a time or file name that an older version did not keep', () => {
   assert.doesNotMatch(buildPhotosWithoutLocationList(buildInput()).text, /Read this album again/);
 

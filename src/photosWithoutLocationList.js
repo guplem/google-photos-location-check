@@ -39,6 +39,7 @@ const MS_PER_MINUTE = 60000;
  * @property {string} text
  * @property {number} photoCount
  * @property {boolean} complete  True only when every photo of the album has an answer.
+ * @property {string} summary  The status line the panel shows after a copy.
  */
 
 /**
@@ -190,5 +191,10 @@ export function buildPhotosWithoutLocationList(input) {
     text: [...header.map((line) => HEADER_PREFIX + line), '', ...lines].join('\n'),
     photoCount: listed.length,
     complete,
+    summary:
+      'Copied ' +
+      countOf(listed.length, 'photo', 'photos') +
+      ' without a location.' +
+      (complete ? '' : ' The list may be incomplete: its first lines say why.'),
   };
 }

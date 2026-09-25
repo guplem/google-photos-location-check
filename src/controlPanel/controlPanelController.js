@@ -174,11 +174,7 @@ export function createControlPanel(deps) {
           try {
             const list = await deps.buildPhotosWithoutLocationList();
             const copied = await copyText(ownerDocument, list.text, 'photos without a location');
-            setStatus(
-              copied
-                ? 'Copied ' + String(list.photoCount) + (list.photoCount === 1 ? ' photo' : ' photos') + ' without a location.'
-                : 'Could not copy. The list is in the console.',
-            );
+            setStatus(copied ? list.summary : 'Could not copy. The list is in the console.');
           } catch (error) {
             console.error('[Location Check] could not build the list of photos without a location', error);
             setStatus('Could not build the list. See the console.');
