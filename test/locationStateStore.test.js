@@ -211,6 +211,59 @@ test('applies verdicts to a record in memory the same way the store does', () =>
   assert.equal(record.photos['photo-b'], undefined, 'expected "unknown" never to reach the record');
 });
 
+test('merges the time and its offset as a pair, and the file name on its own', () => {
+  /** @typedef {import('../src/locationState/locationStateStore.js').PhotoDetails} PhotoDetails */
+  /** @type {PhotoDetails} */
+  const known = { fileName: 'old.jpg', takenAt: 1000, timeZoneOffsetMs: 7200000 };
+  /** @type {{ name: string, known: PhotoDetails, read: PhotoDetails | undefined, expected: PhotoDetails }[]} */
+  const cases = [
+    {
+      name: 'a new read replaces the old details',
+      known,
+      read: { fileName: 'new.jpg', takenAt: 2000, timeZoneOffsetMs: 3600000 },
+      expected: { fileName: 'new.jpg', takenAt: 2000, timeZoneOffsetMs: 3600000 },
+    },
+    {
+      name: 'a read with no details keeps the old ones',
+      known,
+      read: undefined,
+      expected: known,
+    },
+    {
+      name: 'a read with a file name but no time keeps the old time pair',
+      known,
+      read: { fileName: 'new.jpg', takenAt: null, timeZoneOffsetMs: 3600000 },
+      expected: { fileName: 'new.jpg', takenAt: 1000, timeZoneOffsetMs: 7200000 },
+    },
+    {
+      name: 'a new time with no offset never pairs with the old offset',
+      known,
+      read: { fileName: null, takenAt: 2000, timeZoneOffsetMs: null },
+      expected: { fileName: 'old.jpg', takenAt: 2000, timeZoneOffsetMs: null },
+    },
+    {
+      name: 'a remembered offset of 0 survives',
+      known: { fileName: 'old.jpg', takenAt: 1000, timeZoneOffsetMs: 0 },
+      read: { fileName: null, takenAt: null, timeZoneOffsetMs: null },
+      expected: { fileName: 'old.jpg', takenAt: 1000, timeZoneOffsetMs: 0 },
+    },
+  ];
+
+  for (const testCase of cases) {
+    const record = normalizeAlbumRecord('album-1', {});
+    const verdict = new Map([['photo-a', 'no-location']]);
+    applyPhotoStates(record, verdict, 1, new Map([['photo-a', testCase.known]]));
+    applyPhotoStates(record, verdict, 2, testCase.read === undefined ? new Map() : new Map([['photo-a', testCase.read]]));
+
+    const entry = record.photos['photo-a'];
+    assert.deepEqual(
+      { fileName: entry?.fileName, takenAt: entry?.takenAt, timeZoneOffsetMs: entry?.timeZoneOffsetMs },
+      testCase.expected,
+      testCase.name,
+    );
+  }
+});
+
 test('counts the two verdicts', () => {
   const summary = summarizeAlbumRecord({
     albumKey: 'album-1',

@@ -128,6 +128,9 @@ export function normalizeAlbumRecord(albumKey, stored) {
  * A verdict that arrives with no details keeps the details already known: a
  * later answer that says less must not erase what an earlier one said.
  *
+ * The time and its offset merge as a pair. A new time with an old offset
+ * gives a local time that no read ever said.
+ *
  * The store uses this, and so does the page when storage is gone and the
  * verdicts can only live in memory.
  * @param {AlbumLocationRecord} record
@@ -142,12 +145,17 @@ export function applyPhotoStates(record, states, checkedAt, details = new Map())
     if (state !== 'has-location' && state !== 'no-location') continue;
     const known = record.photos[photoKey];
     const read = details.get(photoKey);
+    /** @type {{ takenAt: number | null, timeZoneOffsetMs: number | null }} */
+    const time =
+      read !== undefined && read.takenAt !== null
+        ? { takenAt: read.takenAt, timeZoneOffsetMs: read.timeZoneOffsetMs }
+        : { takenAt: known?.takenAt ?? null, timeZoneOffsetMs: known?.timeZoneOffsetMs ?? null };
     record.photos[photoKey] = {
       state,
       checkedAt,
       fileName: read?.fileName ?? known?.fileName ?? null,
-      takenAt: read?.takenAt ?? known?.takenAt ?? null,
-      timeZoneOffsetMs: read?.timeZoneOffsetMs ?? known?.timeZoneOffsetMs ?? null,
+      takenAt: time.takenAt,
+      timeZoneOffsetMs: time.timeZoneOffsetMs,
     };
     changed = true;
   }
