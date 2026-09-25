@@ -50,7 +50,12 @@ import { scanAlbumLocations } from './locationState/albumLocationScan.js';
 import { createLocationBadgeRenderer } from './locationState/locationBadgeRenderer.js';
 import { createLocationLookupQueue } from './locationState/locationLookupQueue.js';
 import { findNextPhotoWithoutLocation } from './locationState/nextPhotoWithoutLocation.js';
-import { createEmptyAlbumRecord, createLocationStateStore, summarizeAlbumRecord } from './locationState/locationStateStore.js';
+import {
+  applyPhotoStates,
+  createEmptyAlbumRecord,
+  createLocationStateStore,
+  summarizeAlbumRecord,
+} from './locationState/locationStateStore.js';
 import { createPhotosRpcClient } from './photosRpc/photosRpcClient.js';
 import { DEFAULT_SETTINGS, loadSettings } from './settings/extensionSettings.js';
 
@@ -160,21 +165,18 @@ export async function start() {
 
   /**
    * @param {ReadonlyMap<string, string>} states
+   * @param {ReadonlyMap<string, import('./locationState/locationStateStore.js').PhotoDetails>} details
    * @returns {Promise<void>}
    */
-  async function writeResults(states) {
+  async function writeResults(states, details) {
     if (albumKey === null) return;
     try {
-      albumRecord = await store.mergePhotoStates(albumKey, states);
+      albumRecord = await store.mergePhotoStates(albumKey, states, Date.now(), details);
     } catch (error) {
       // The extension was reloaded under a page that stayed open. Keep the
       // verdicts in memory, so the badges are still right for this visit.
       rememberFailures(['could not remember the results: ' + String(error)]);
-      for (const [photoKey, state] of states) {
-        if (state === 'has-location' || state === 'no-location') {
-          albumRecord.photos[photoKey] = { state, checkedAt: Date.now() };
-        }
-      }
+      applyPhotoStates(albumRecord, states, Date.now(), details);
     }
     renderer.refresh();
     updatePanel();
@@ -207,7 +209,7 @@ export async function start() {
         else unreadablePhotos.delete(photoKey);
       }
       rememberFailures(result.failureReasons);
-      void writeResults(result.states);
+      void writeResults(result.states, result.readings);
     },
 
     onError: (error) => {
