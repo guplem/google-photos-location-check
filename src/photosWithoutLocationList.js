@@ -182,10 +182,7 @@ export function buildPhotosWithoutLocationList(input) {
     );
   }
   if (input.photosPending > 0) {
-    header.push(
-      countOf(input.photosPending, 'photo is', 'photos are') +
-        ' still waiting to be read. Copy the list again when they are done.',
-    );
+    header.push(countOf(input.photosPending, 'photo is', 'photos are') + ' still waiting to be read. Copy the list again later.');
   }
   if (withMissingDetails > 0) {
     header.push(

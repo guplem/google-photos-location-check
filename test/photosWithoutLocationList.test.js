@@ -212,7 +212,11 @@ test('is not complete while lookups are still pending', () => {
 
   assert.equal(list.complete, false);
   assert.doesNotMatch(list.text, /The whole album was read/);
-  assert.match(list.text, /^# 2 photos are still waiting to be read\. Copy the list again when they are done\.$/m);
+  assert.match(list.text, /^# 2 photos are still waiting to be read\. Copy the list again later\.$/m);
+  assert.match(
+    buildPhotosWithoutLocationList(buildInput({ photosPending: 1 })).text,
+    /^# 1 photo is still waiting to be read\. Copy the list again later\.$/m,
+  );
 });
 
 test('is complete only when the order is complete, every photo has an answer, and nothing is pending', () => {
