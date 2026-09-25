@@ -455,7 +455,7 @@ export async function start() {
       });
     },
 
-    buildPhotosWithoutLocationList: async () => {
+    buildMissingLocationList: async () => {
       if (albumKey === null) throw new Error('this page is not an album');
       return buildPhotosWithoutLocationList({
         albumKey,

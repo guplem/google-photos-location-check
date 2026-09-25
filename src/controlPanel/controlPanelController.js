@@ -39,7 +39,7 @@ const COPY_TIMEOUT_MS = 2000;
  * @property {() => void} onStopReading
  * @property {(direction: 'next' | 'previous') => Promise<void>} onJumpToPhotoWithoutLocation
  * @property {() => Promise<string>} buildReport
- * @property {() => Promise<import('../photosWithoutLocationList.js').PhotosWithoutLocationList>} buildPhotosWithoutLocationList
+ * @property {() => Promise<import('../photosWithoutLocationList.js').PhotosWithoutLocationList>} buildMissingLocationList
  * @property {() => Promise<void>} onRecheckAlbum
  * @property {() => void} onOpenOptions
  */
@@ -172,7 +172,7 @@ export function createControlPanel(deps) {
         void (async () => {
           setStatus('Building the list...');
           try {
-            const list = await deps.buildPhotosWithoutLocationList();
+            const list = await deps.buildMissingLocationList();
             const copied = await copyText(ownerDocument, list.text, 'photos without a location');
             setStatus(copied ? list.summary : 'Could not copy. The list is in the console.');
           } catch (error) {
