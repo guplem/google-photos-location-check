@@ -58,7 +58,7 @@ Each line has three columns, separated by tabs, so the list pastes into a spread
 2021-05-12T23:20:49+02:00	IMG_20210512_232045262_HDR.jpg	https://photos.google.com/album/.../photo/...
 ```
 
-1. The time the photo was taken, in the photo's own local time, as an ISO 8601 timestamp (a standard date format, `YYYY-MM-DDThh:mm:ss` plus the time zone).
+1. The time the photo was taken, in the photo's own local time, as an ISO 8601 timestamp (a standard date format, `YYYY-MM-DDThh:mm:ss` plus the time zone). A time that ends in `Z` is in UTC (Coordinated Universal Time), because the time zone of the photo is not known.
 2. The file name.
 3. A link that opens the photo.
 

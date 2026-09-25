@@ -12,7 +12,7 @@ The rest of the extension is different. Reading an answer out of an unnamed nest
 
 - `albumLocationScan.js` holds the loop and **contains no DOM code and no `fetch` at all**. Every action arrives as a function: `readChunk`, `wait`, `shouldStop`, `onProgress`. A test passes a fake reader and a `wait` that only records the number, so the whole suite finishes in milliseconds even though the real backoff waits six seconds.
 - `mediaLocationReading.js` is the verdict, and it takes plain arrays. Its fixtures are built from answers captured from a real album, so the test data is Google's shape, not this repo's guess.
-- `batchExecuteMessage.js`, `pageTokens.js`, `googlePhotosPage.js`, `extensionSettings.js`, `locationStateStore.js`, `locationLookupQueue.js` and `diagnosticsReport.js` are pure and fully tested. The store takes a storage area as an argument, so a test passes an in-memory object.
+- `batchExecuteMessage.js`, `pageTokens.js`, `googlePhotosPage.js`, `extensionSettings.js`, `locationStateStore.js`, `locationLookupQueue.js`, `diagnosticsReport.js` and `photosWithoutLocationList.js` are pure and fully tested. The store takes a storage area as an argument, so a test passes an in-memory object.
 
 **Exempt from unit tests:** `photosRpcClient.js`, `locationBadgeRenderer.js`, `controlPanelController.js`, and `optionsPage.js`. Keep them thin. An adapter reads an element, sends a request, or writes an attribute. It holds no decision. When a bug appears in one of them, move the decision that failed into a pure function and test that, rather than test the adapter.
 

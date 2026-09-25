@@ -8,8 +8,8 @@
  *
  * Each entry also keeps the file name and the time the photo was taken, as the
  * lookup read them. The list of photos without a location sorts and names the
- * photos with them. An entry written by an older version has neither, so both
- * read back as `null`, and reading the album again fills them in.
+ * photos with them. An entry written by an older version has none of them, so
+ * each one reads back as `null`, and reading the album again fills them in.
  *
  * Only a verdict is ever stored. `unknown` means "we could not read it", and
  * writing that down would stop the extension asking again on the next visit.

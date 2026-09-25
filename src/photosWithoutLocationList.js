@@ -52,7 +52,10 @@ function countOf(count, singular, plural) {
   return String(count) + ' ' + (count === 1 ? singular : plural);
 }
 
-/** @param {number} value */
+/**
+ * @param {number} value
+ * @returns {string}
+ */
 function twoDigits(value) {
   return String(value).padStart(2, '0');
 }
