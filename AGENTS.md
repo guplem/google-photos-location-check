@@ -86,13 +86,15 @@ The JavaScript and the stylesheets do not call each other. `publishSettings` wri
 2. `contentEntry.js` puts them in `locationLookupQueue.js`, which drops the ones already answered or already being asked about.
 3. After a short debounce the queue calls `albumLocationScan.js`, which splits the work into batches and handles the retries.
 4. Each batch goes through `photosRpcClient.js` to the `fDcn4b` call, and `mediaLocationReading.js` turns each answer into `has-location`, `no-location`, or "cannot tell".
-5. The verdicts go to `locationStateStore.js`, and the renderer redraws.
+5. The verdicts go to `locationStateStore.js`, with each photo's file name and time taken, and the renderer redraws.
 
 The **Read whole album** button changes none of that. `albumGridSweep.js` only scrolls the grid from top to bottom, which makes every thumbnail appear once, and steps 1 to 5 then happen by themselves. The sweep looks up nothing itself.
 
 The **Next / Previous without location** buttons scroll the same grid with `albumGridJump.js`, but they cannot stay off to the side the way the sweep does: they must know a screen's verdicts before they can tell whether it holds the photo they are after. So each screen they uncover is looked up and waited for before it is judged, which is why they work without the sweep having run first.
 
 In the photo viewer there is no grid to walk, so the same buttons take a different path. `contentEntry.js`'s `openPhotoWithoutLocation` searches the album order a sweep wrote down, with `nextPhotoWithoutLocation.js`, and moves the address bar to the matching photo with a plain page load. An album with no remembered order cannot answer this, so the panel tells the user to press **Read whole album** from the grid first.
+
+The **Copy photos without location** button looks up nothing. It reads only the stored album record, and `photosWithoutLocationList.js` sorts its `no-location` entries by the time taken, so the user can match each one against a Google Maps Timeline export.
 
 ### File map
 
@@ -102,15 +104,16 @@ In the photo viewer there is no grid to walk, so the same buttons take a differe
 | `src/albumGrid/albumGridSweep.js`               | The top-to-bottom walk of the grid. Pure logic, no DOM.                                                           |
 | `src/albumGrid/albumGridJump.js`                | The walk to the next, or previous, photo without a location. Pure logic, no DOM.                                  |
 | `src/albumGrid/albumGridScroller.js`            | **The only file that moves the grid.** Finds the real scroll container.                                           |
-| `src/googlePhotosPage.js`                       | URL parsing and the grid link selector. **All URL knowledge lives here.**                                         |
+| `src/googlePhotosPage.js`                       | URL parsing, photo links, and the grid link selector. **All URL knowledge lives here.**                           |
 | `src/diagnosticsReport.js`                      | Builds the report the panel copies. Pure logic, no DOM and no `chrome.*`.                                         |
+| `src/photosWithoutLocationList.js`              | Builds the time-ordered list of photos without a location that the panel copies. Pure logic, no clock.            |
 | `src/photosRpc/pageTokens.js`                   | Reads the three request tokens out of the page's inline script text.                                              |
 | `src/photosRpc/batchExecuteMessage.js`          | Builds the request and reads the answers back. **All protocol shape here.**                                       |
 | `src/photosRpc/photosRpcClient.js`              | Sends the request. The only file that calls `fetch`.                                                              |
-| `src/locationState/mediaLocationReading.js`     | One answer to a verdict. **The only file that knows index 13.**                                                   |
+| `src/locationState/mediaLocationReading.js`     | One answer to a verdict. **The only file that knows the indexes of the photo array.**                             |
 | `src/locationState/albumLocationScan.js`        | Batches, parallel requests, and the retry rules. Pure logic, no DOM.                                              |
 | `src/locationState/locationLookupQueue.js`      | Dedupes, drops what is known, runs one lookup at a time. Pure logic.                                              |
-| `src/locationState/locationStateStore.js`       | The per-album record, verdicts and album order, in `chrome.storage.local`.                                        |
+| `src/locationState/locationStateStore.js`       | The per-album record in `chrome.storage.local`: verdicts, file names, times taken, and album order.               |
 | `src/locationState/nextPhotoWithoutLocation.js` | The walk to the next, or previous, photo without a location, over the remembered album order. Pure logic, no DOM. |
 | `src/locationState/locationBadgeRenderer.js`    | Draws the badges and reports what is on screen.                                                                   |
 | `src/controlPanel/controlPanelController.js`    | The in-page panel.                                                                                                |
@@ -124,7 +127,7 @@ In the photo viewer there is no grid to walk, so the same buttons take a differe
 - **Never store `unknown`.** `locationStateStore.js` writes verdicts only. Storing `unknown` would tell the next visit the photo is already answered, and it would never be read again.
 - **Never match a Google class name.** Google Photos ships obfuscated class names (`QxNbxb`, `p137Zd`) that change with every release. Match the URL, a link target (`a[href*="/photo/"]`), or an accessible name. See `adr/0004-semantic-dom-matching.md`.
 - **A sweep may only move the grid, and must put it back.** `albumGridSweep.js` scrolls and nothing else. It starts at the top, because the user may press the button half way down an album, and it returns the grid to where it found it in a `finally`, so a stop or a failure restores it too. Nothing covers the grid afterwards, so a user left at the bottom of a 1611-photo album has lost their place. `albumGridJump.js` also scrolls the grid, but it must move the user: that is its whole job. It restores the position only when it finds nothing.
-- **Only `reachedBottom` licenses an album total.** A sweep that ran out of steps, was stopped, or met a grid that refused to move did not see the album. Showing its count as a total turns "we stopped looking" into "there is nothing left".
+- **Only `reachedBottom` licenses an album total.** A sweep that ran out of steps, was stopped, or met a grid that refused to move did not see the album. Showing its count as a total turns "we stopped looking" into "there is nothing left". `reachedBottom` (and `orderComplete`) is necessary, not enough: also check that every photo in the order has a stored verdict and that no lookup is pending, because "cannot tell" is never stored.
 - **Never click a Google Photos control, and never press a key on its behalf.** Beyond the sweep's and the jump's scrolling, the only other page action this extension takes is opening a different photo of the same album, from the photo viewer's Next/Previous buttons, and only as a plain page load built by `replacePhotoKey` (`googlePhotosPage.js`), never by pressing the site's own arrows. If a feature seems to need a click or a key press, update `adr/0004-semantic-dom-matching.md` first, and take the sibling extensions' rule with it: a click target must match a known word, or the work stops.
 - **Keep DOM and `fetch` out of the logic.** `albumLocationScan.js` receives every action as a function, which is why its whole loop is unit tested with no browser and no network. Put each fragile call in a small adapter, keep the decision in a pure function, and test the pure function.
 - **Validate everything that comes out of storage.** `normalizeSettings` and `normalizeAlbumRecord` drop unknown keys and repair wrong values, because storage can hold data written by an older version. Extend those functions when you add a field, and add a test.
@@ -134,7 +137,7 @@ In the photo viewer there is no grid to walk, so the same buttons take a differe
 ## Gotchas
 
 - **The photo key in a grid link is the media id the RPC takes.** `a[href=".../photo/AF1Qip..."]` gives a 44-character string, and `fDcn4b` takes exactly that string. There is no translation step anywhere, and this is the fact that lets the extension work off the grid alone. Do not add a lookup table for it.
-- **The location sits at index 13 of the photo array, and nothing names it.** The answer is `[[latitudeE7, longitudeE7], flag, [placeEntry, ...]]`, or `null` for a photo with no location. `E7` means degrees times ten million: `53443938` is `5.3443938`. `mediaLocationReading.js` is the only file that knows this. Change it in one place.
+- **The location sits at index 13 of the photo array, and nothing names it.** The answer is `[[latitudeE7, longitudeE7], flag, [placeEntry, ...]]`, or `null` for a photo with no location. `E7` means degrees times ten million: `53443938` is `5.3443938`. The other known indexes are 0 (media id), 2 (file name), 3 (time taken, epoch milliseconds UTC), and 4 (time zone offset, milliseconds). Time taken plus offset is the photo's local time. `mediaLocationReading.js` is the only file that knows these indexes. Change them in one place.
 - **The answers come back with their slots shuffled.** A request for 100 photos answers in any order, so an answer is tied to its photo by the slot id (`row[6]`), never by position. Pair by index and you badge the wrong photos, which looks plausible and is completely wrong.
 - **A place name above a run of thumbnails is not photo data.** Google Photos shows the album's own location there, which the owner set by hand. It says nothing about the photos under it, and it misled the first reading of the page during research.
 - **The album payload in the page holds no location.** `AF_initDataCallback` under `ds:7` carries the first 300 items with their ids, file names, sizes and video durations. There is no location field in it. Do not go looking again.
@@ -159,7 +162,7 @@ Develop new behavior **test-first, red-green**: write a failing test that pins t
 
 What is testable here, and what is not:
 
-- **Testable, and always test-first:** the answer-to-verdict decision (`mediaLocationReading.js`), the request and response shapes (`batchExecuteMessage.js`), the token read (`pageTokens.js`), the scan loop with its retries (`albumLocationScan.js`), the queue (`locationLookupQueue.js`), the grid sweep (`albumGridSweep.js`), the grid jump to the next photo without a location (`albumGridJump.js`), the same search over the remembered album order for the photo viewer (`nextPhotoWithoutLocation.js`), URL parsing (`googlePhotosPage.js`), settings validation (`extensionSettings.js`), the storage record shape (`locationStateStore.js`), and the report (`diagnosticsReport.js`).
+- **Testable, and always test-first:** the answer-to-verdict decision (`mediaLocationReading.js`), the request and response shapes (`batchExecuteMessage.js`), the token read (`pageTokens.js`), the scan loop with its retries (`albumLocationScan.js`), the queue (`locationLookupQueue.js`), the grid sweep (`albumGridSweep.js`), the grid jump to the next photo without a location (`albumGridJump.js`), the same search over the remembered album order for the photo viewer (`nextPhotoWithoutLocation.js`), URL parsing (`googlePhotosPage.js`), settings validation (`extensionSettings.js`), the storage record shape (`locationStateStore.js`), the report (`diagnosticsReport.js`), and the list of photos without a location (`photosWithoutLocationList.js`).
 - **Exempt, because a unit test would only re-state the code:** `photosRpcClient.js`, `albumGridScroller.js`, `locationBadgeRenderer.js`, `controlPanelController.js`, and `optionsPage.js`. Keep these thin: an adapter reads an element, sends a request, or writes an attribute, and it holds no decision.
 - **The safety net for the exempt parts** is the type check (`npm run typecheck` reads every file) plus one manual run in Chrome. `adr/0005-testing-strategy.md` records this split.
 

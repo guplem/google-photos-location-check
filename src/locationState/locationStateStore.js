@@ -6,6 +6,11 @@
  * `chrome.storage.local`, never in `sync`: a large album passes the per-item
  * quota that `sync` enforces.
  *
+ * Each entry also keeps the file name and the time the photo was taken, as the
+ * lookup read them. The list of photos without a location sorts and names the
+ * photos with them. An entry written by an older version has none of them, so
+ * each one reads back as `null`, and reading the album again fills them in.
+ *
  * Only a verdict is ever stored. `unknown` means "we could not read it", and
  * writing that down would stop the extension asking again on the next visit.
  *
@@ -29,6 +34,14 @@ export const LOCATION_STATE_KEY_PREFIX = 'locationState:v1:';
  * @typedef {object} PhotoLocationEntry
  * @property {StoredLocationState} state
  * @property {number} checkedAt  Milliseconds since the epoch.
+ * @property {string | null} fileName
+ * @property {number | null} takenAt           Milliseconds since the epoch, UTC.
+ * @property {number | null} timeZoneOffsetMs  Add it to `takenAt` to get the photo's local time.
+ *
+ * @typedef {object} PhotoDetails  What a lookup read about a photo, besides its verdict.
+ * @property {string | null} fileName
+ * @property {number | null} takenAt
+ * @property {number | null} timeZoneOffsetMs
  *
  * @typedef {object} AlbumLocationRecord
  * @property {string} albumKey
@@ -60,6 +73,14 @@ export function createEmptyAlbumRecord(albumKey) {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
+function readFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
  * Rejects anything that does not look like a record we wrote.
  * @param {string} albumKey
  * @param {unknown} stored
@@ -79,6 +100,9 @@ export function normalizeAlbumRecord(albumKey, stored) {
     clean[photoKey] = {
       state: candidate.state,
       checkedAt: typeof candidate.checkedAt === 'number' ? candidate.checkedAt : 0,
+      fileName: typeof candidate.fileName === 'string' && candidate.fileName !== '' ? candidate.fileName : null,
+      takenAt: readFiniteNumber(candidate.takenAt),
+      timeZoneOffsetMs: readFiniteNumber(candidate.timeZoneOffsetMs),
     };
   }
 
@@ -94,6 +118,49 @@ export function normalizeAlbumRecord(albumKey, stored) {
     order,
     orderComplete: order.length > 0 && raw.orderComplete === true,
   };
+}
+
+/**
+ * Writes new verdicts into a record, in place.
+ *
+ * Anything that is not a verdict is dropped here rather than at every call
+ * site, so a caller can hand over a whole scan result without filtering it.
+ * A verdict that arrives with no details keeps the details already known: a
+ * later answer that says less must not erase what an earlier one said.
+ *
+ * The time and its offset merge as a pair. A new time with an old offset
+ * gives a local time that no read ever said.
+ *
+ * The store uses this, and so does the page when storage is gone and the
+ * verdicts can only live in memory.
+ * @param {AlbumLocationRecord} record
+ * @param {ReadonlyMap<string, string>} states
+ * @param {number} checkedAt
+ * @param {ReadonlyMap<string, PhotoDetails>} [details]
+ * @returns {boolean} True when the record changed.
+ */
+export function applyPhotoStates(record, states, checkedAt, details = new Map()) {
+  let changed = false;
+  for (const [photoKey, state] of states) {
+    if (state !== 'has-location' && state !== 'no-location') continue;
+    const known = record.photos[photoKey];
+    const read = details.get(photoKey);
+    /** @type {{ takenAt: number | null, timeZoneOffsetMs: number | null }} */
+    const time =
+      read !== undefined && read.takenAt !== null
+        ? { takenAt: read.takenAt, timeZoneOffsetMs: read.timeZoneOffsetMs }
+        : { takenAt: known?.takenAt ?? null, timeZoneOffsetMs: known?.timeZoneOffsetMs ?? null };
+    record.photos[photoKey] = {
+      state,
+      checkedAt,
+      fileName: read?.fileName ?? known?.fileName ?? null,
+      takenAt: time.takenAt,
+      timeZoneOffsetMs: time.timeZoneOffsetMs,
+    };
+    changed = true;
+  }
+  if (changed) record.updatedAt = checkedAt;
+  return changed;
 }
 
 /**
@@ -122,26 +189,18 @@ export function createLocationStateStore(storageArea) {
     },
 
     /**
-     * Merges new verdicts into what is already stored.
-     *
-     * Anything that is not a verdict is dropped here rather than at every call
-     * site, so a caller can hand over a whole scan result without filtering it.
+     * Merges new verdicts, and what was read with them, into what is already
+     * stored. `applyPhotoStates` holds the rules.
      * @param {string} albumKey
      * @param {ReadonlyMap<string, string>} states
      * @param {number} checkedAt
+     * @param {ReadonlyMap<string, PhotoDetails>} [details]
      * @returns {Promise<AlbumLocationRecord>}
      */
-    async mergePhotoStates(albumKey, states, checkedAt = Date.now()) {
+    async mergePhotoStates(albumKey, states, checkedAt = Date.now(), details = new Map()) {
       const record = await this.readAlbum(albumKey);
-      let changed = false;
-      for (const [photoKey, state] of states) {
-        if (state !== 'has-location' && state !== 'no-location') continue;
-        record.photos[photoKey] = { state, checkedAt };
-        changed = true;
-      }
-      if (!changed) return record;
+      if (!applyPhotoStates(record, states, checkedAt, details)) return record;
 
-      record.updatedAt = checkedAt;
       await storageArea.set({ [albumStorageKey(albumKey)]: record });
       return record;
     },

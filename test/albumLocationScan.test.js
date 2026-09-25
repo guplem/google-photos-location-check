@@ -9,7 +9,15 @@ import { CHUNK_ATTEMPT_DELAYS_MS, scanAlbumLocations } from '../src/locationStat
  * @returns {import('../src/locationState/mediaLocationReading.js').MediaLocationReading}
  */
 function reading(mediaId, state) {
-  return { mediaId, state, fileName: `${mediaId}.jpg`, placeName: null, coordinates: null };
+  return {
+    mediaId,
+    state,
+    fileName: `${mediaId}.jpg`,
+    takenAt: null,
+    timeZoneOffsetMs: null,
+    placeName: null,
+    coordinates: null,
+  };
 }
 
 /** @param {number} count */
@@ -189,6 +197,8 @@ test('keeps the full reading, so the report can name the place and the file', as
             mediaId: 'media-0',
             state: /** @type {const} */ ('has-location'),
             fileName: 'IMG_1.jpg',
+            takenAt: null,
+            timeZoneOffsetMs: null,
             placeName: 'Khemical',
             coordinates: { latitude: 5.34, longitude: -0.62 },
           },

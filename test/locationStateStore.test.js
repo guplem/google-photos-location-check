@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   albumStorageKey,
+  applyPhotoStates,
   createLocationStateStore,
   LOCATION_STATE_KEY_PREFIX,
   normalizeAlbumRecord,
@@ -35,7 +36,13 @@ test('reads back what it wrote', async () => {
   await store.mergePhotoStates('album-1', new Map([['photo-a', 'no-location']]), 1000);
   const record = await store.readAlbum('album-1');
 
-  assert.deepEqual(record.photos['photo-a'], { state: 'no-location', checkedAt: 1000 });
+  assert.deepEqual(record.photos['photo-a'], {
+    state: 'no-location',
+    checkedAt: 1000,
+    fileName: null,
+    takenAt: null,
+    timeZoneOffsetMs: null,
+  });
   assert.equal(record.updatedAt, 1000);
 });
 
@@ -117,14 +124,154 @@ test('drops a photo entry whose state is not one we know', () => {
   assert.equal(record.photos['missingClock']?.checkedAt, 0);
 });
 
+test('an entry written by an older version has no file name and no time', () => {
+  const record = normalizeAlbumRecord('album-1', { photos: { old: { state: 'no-location', checkedAt: 9 } } });
+
+  assert.deepEqual(record.photos['old'], {
+    state: 'no-location',
+    checkedAt: 9,
+    fileName: null,
+    takenAt: null,
+    timeZoneOffsetMs: null,
+  });
+});
+
+test('repairs a stored file name or time that is not one', () => {
+  const record = normalizeAlbumRecord('album-1', {
+    photos: {
+      good: { state: 'no-location', checkedAt: 9, fileName: 'IMG_1.jpg', takenAt: 1620854449439, timeZoneOffsetMs: 0 },
+      broken: { state: 'no-location', checkedAt: 9, fileName: '', takenAt: 'noon', timeZoneOffsetMs: null },
+    },
+  });
+
+  assert.deepEqual(record.photos['good'], {
+    state: 'no-location',
+    checkedAt: 9,
+    fileName: 'IMG_1.jpg',
+    takenAt: 1620854449439,
+    timeZoneOffsetMs: 0,
+  });
+  assert.equal(record.photos['broken']?.fileName, null);
+  assert.equal(record.photos['broken']?.takenAt, null);
+  assert.equal(record.photos['broken']?.timeZoneOffsetMs, null);
+});
+
+test('remembers the file name and the time of each photo it reads', async () => {
+  const store = createLocationStateStore(fakeStorageArea());
+
+  await store.mergePhotoStates(
+    'album-1',
+    new Map([['photo-a', 'no-location']]),
+    1000,
+    new Map([['photo-a', { fileName: 'IMG_1.jpg', takenAt: 1620854449439, timeZoneOffsetMs: 7200000 }]]),
+  );
+  const record = await store.readAlbum('album-1');
+
+  assert.deepEqual(record.photos['photo-a'], {
+    state: 'no-location',
+    checkedAt: 1000,
+    fileName: 'IMG_1.jpg',
+    takenAt: 1620854449439,
+    timeZoneOffsetMs: 7200000,
+  });
+});
+
+test('keeps a remembered file name and time when a new verdict brings none', async () => {
+  const store = createLocationStateStore(fakeStorageArea());
+  await store.mergePhotoStates(
+    'album-1',
+    new Map([['photo-a', 'no-location']]),
+    1000,
+    new Map([['photo-a', { fileName: 'IMG_1.jpg', takenAt: 5, timeZoneOffsetMs: 0 }]]),
+  );
+
+  await store.mergePhotoStates('album-1', new Map([['photo-a', 'has-location']]), 2000);
+
+  const entry = (await store.readAlbum('album-1')).photos['photo-a'];
+  assert.equal(entry?.state, 'has-location');
+  assert.equal(entry?.fileName, 'IMG_1.jpg');
+  assert.equal(entry?.takenAt, 5);
+});
+
+test('applies verdicts to a record in memory the same way the store does', () => {
+  const record = normalizeAlbumRecord('album-1', {});
+
+  const changed = applyPhotoStates(
+    record,
+    new Map([
+      ['photo-a', 'no-location'],
+      ['photo-b', 'unknown'],
+    ]),
+    1000,
+    new Map([['photo-a', { fileName: 'IMG_1.jpg', takenAt: 5, timeZoneOffsetMs: 0 }]]),
+  );
+
+  assert.equal(changed, true);
+  assert.equal(record.photos['photo-a']?.fileName, 'IMG_1.jpg');
+  assert.equal(record.photos['photo-b'], undefined, 'expected "unknown" never to reach the record');
+});
+
+test('merges the time and its offset as a pair, and the file name on its own', () => {
+  /** @typedef {import('../src/locationState/locationStateStore.js').PhotoDetails} PhotoDetails */
+  /** @type {PhotoDetails} */
+  const known = { fileName: 'old.jpg', takenAt: 1000, timeZoneOffsetMs: 7200000 };
+  /** @type {{ name: string, known: PhotoDetails, read: PhotoDetails | undefined, expected: PhotoDetails }[]} */
+  const cases = [
+    {
+      name: 'a new read replaces the old details',
+      known,
+      read: { fileName: 'new.jpg', takenAt: 2000, timeZoneOffsetMs: 3600000 },
+      expected: { fileName: 'new.jpg', takenAt: 2000, timeZoneOffsetMs: 3600000 },
+    },
+    {
+      name: 'a read with no details keeps the old ones',
+      known,
+      read: undefined,
+      expected: known,
+    },
+    {
+      name: 'a read with a file name but no time keeps the old time pair',
+      known,
+      read: { fileName: 'new.jpg', takenAt: null, timeZoneOffsetMs: 3600000 },
+      expected: { fileName: 'new.jpg', takenAt: 1000, timeZoneOffsetMs: 7200000 },
+    },
+    {
+      name: 'a new time with no offset never pairs with the old offset',
+      known,
+      read: { fileName: null, takenAt: 2000, timeZoneOffsetMs: null },
+      expected: { fileName: 'old.jpg', takenAt: 2000, timeZoneOffsetMs: null },
+    },
+    {
+      name: 'a remembered offset of 0 survives',
+      known: { fileName: 'old.jpg', takenAt: 1000, timeZoneOffsetMs: 0 },
+      read: { fileName: null, takenAt: null, timeZoneOffsetMs: null },
+      expected: { fileName: 'old.jpg', takenAt: 1000, timeZoneOffsetMs: 0 },
+    },
+  ];
+
+  for (const testCase of cases) {
+    const record = normalizeAlbumRecord('album-1', {});
+    const verdict = new Map([['photo-a', 'no-location']]);
+    applyPhotoStates(record, verdict, 1, new Map([['photo-a', testCase.known]]));
+    applyPhotoStates(record, verdict, 2, testCase.read === undefined ? new Map() : new Map([['photo-a', testCase.read]]));
+
+    const entry = record.photos['photo-a'];
+    assert.deepEqual(
+      { fileName: entry?.fileName, takenAt: entry?.takenAt, timeZoneOffsetMs: entry?.timeZoneOffsetMs },
+      testCase.expected,
+      testCase.name,
+    );
+  }
+});
+
 test('counts the two verdicts', () => {
   const summary = summarizeAlbumRecord({
     albumKey: 'album-1',
     updatedAt: 1,
     photos: {
-      a: { state: 'no-location', checkedAt: 1 },
-      b: { state: 'has-location', checkedAt: 1 },
-      c: { state: 'no-location', checkedAt: 1 },
+      a: { state: 'no-location', checkedAt: 1, fileName: null, takenAt: null, timeZoneOffsetMs: null },
+      b: { state: 'has-location', checkedAt: 1, fileName: null, takenAt: null, timeZoneOffsetMs: null },
+      c: { state: 'no-location', checkedAt: 1, fileName: null, takenAt: null, timeZoneOffsetMs: null },
     },
     order: ['a', 'b', 'c'],
     orderComplete: true,
